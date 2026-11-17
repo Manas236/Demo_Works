@@ -723,6 +723,20 @@ DOC_NUMBER_CREATE_PERMS = {
 }
 
 
+def may_type_ti_number() -> bool:
+    """
+    May the signed-in reader set a TAX INVOICE NUMBER by hand, the way Tally
+    Prime issued it (17 Nov 2026, §0 seventy-ninth block)? Whoever reached the
+    create or edit page may — the route's own permission is the gate — unless
+    their own BLOCK list names `docnum.override` (an Owner's lists are ignored,
+    the fifty-sixth block's rule).
+    """
+    user = current_user() or {}
+    if OWNER_PERM in role_permissions_of(user):
+        return True
+    return "docnum.override" not in (user.get(PERM_DENY_FIELD) or [])
+
+
 def _doc_number_implied(user, held: set) -> bool:
     """Is `docnum.override` implied here by the document's create permission?"""
     from flask import has_request_context

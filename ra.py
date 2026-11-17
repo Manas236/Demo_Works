@@ -70,6 +70,7 @@ import measurement as MS
 import pipeline as P
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import docnum as DN    # the typed RA number, forward only per BOQ chain (31 Oct 2026)
+import tinum as TN     # the tax invoice number as Tally gave it — the leaf (17 Nov 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 # "Is this challan billed, and by which bill?" — ONE predicate, in a leaf both
 # this module and `challan.py` import, because neither may import the other
@@ -3573,6 +3574,33 @@ def _ra_auth():
     return auth
 
 
+def _in_live_merge(bill) -> bool:
+    """
+    Is this bill a leg of a LIVE merged RA? (17 Nov 2026, §0 seventy-ninth
+    block.) Such a leg carries no statutory serial of its own — the merged
+    document carries the one number — so it is never offered the Tally box.
+    `STORE["merged_ras"]` read directly: `merged_ra.py` imports this module.
+    """
+    rid = str((bill or {}).get("id") or "")
+    for doc in (STORE.get("merged_ras") or {}).values():
+        if rid and rid in (str(doc.get("supply_ra_id") or ""),
+                           str(doc.get("installation_ra_id") or "")):
+            if str(doc.get("status") or "").strip().lower() != "cancelled":
+                return True
+    return False
+
+
+def _ti_box(value: str = "", bill=None) -> str:
+    """The Tally tax invoice number box, or "" on a leg of a live merge."""
+    if bill is not None and _in_live_merge(bill):
+        return ""
+    return TN.field_html(value, may=_ra_auth().may_type_ti_number(),
+                         hint=("The number Tally Prime gave. Leave blank on a new "
+                               "bill to take the next automatic number. A number "
+                               "already on another live tax invoice is refused.")
+                         if bill is None else "")
+
+
 def _ra_editlog():
     """`editlog`, the leaf (31 Oct 2026)."""
     import editlog
@@ -4646,7 +4674,13 @@ def create_ra(imported: dict = None):
                 _ra_may_set_number())
             error = error or ra_no_err
 
-        tax_invoice_ref = (request.form.get("tax_invoice_ref") or "").strip()
+        # The tax invoice number as Tally gave it (17 Nov 2026, §0 seventy-
+        # ninth block): any non-blank value, not forward-only; blank mints the
+        # automatic number as before; a number on another live TI is refused.
+        tax_invoice_ref, ti_err = TN.validate(
+            request.form.get(TN.FIELD), coll="ra_bills", required=False,
+            may=_ra_auth().may_type_ti_number())
+        error = error or ti_err
         def_po_ref, def_po_date = previous_bill_po_defaults(boq_id)
         po_ref = (request.form.get("po_ref") if request.form.get("po_ref") is not None else def_po_ref).strip()
         po_date = (request.form.get("po_date") if request.form.get("po_date") is not None else def_po_date).strip()
@@ -4719,7 +4753,8 @@ def create_ra(imported: dict = None):
         + DN.ra_no_field(ra_no, may_override=_ra_may_set_number(),
                          typed=(request.form.get("ra_no_typed") or "")
                          if request.method == "POST" else "")
-        + "</div>")
+        + "</div>"
+        + _ti_box((request.form.get(TN.FIELD) or "") if request.method == "POST" else ""))
     return _entry_form(
         boq, leg, prev, entered, error,
         action=url_for("ra.create_ra", boq=boq_id, leg=leg),
@@ -4783,8 +4818,18 @@ def edit_text(id: str):
                         if bill else url_for("ra.create_ra", msg=why, type="error"))
     error = ""
     vals = {k: str(bill.get(k) or "") for k, _l in TEXT_FIELDS}
+    # The Tally number on an ISSUED bill (17 Nov 2026, §0 seventy-ninth block).
+    ti_was = str(bill.get("tax_invoice_ref") or "")
+    ti_val = ti_was
     if request.method == "POST":
         vals = EL.posted_text(request.form, TEXT_FIELDS)
+        if TN.FIELD in request.form and not _in_live_merge(bill):
+            ti_val, error = TN.validate(request.form.get(TN.FIELD), current=ti_was,
+                                        coll="ra_bills", rec_id=id,
+                                        required=bool(ti_was),
+                                        may=_AUTH.may_type_ti_number())
+            if error:
+                ti_val = (request.form.get(TN.FIELD) or "").strip()
         fy = P.fy_of(bill.get("date") or "")
         for key in ("date", "tax_invoice_date"):
             if vals[key] and fy and P.fy_of(vals[key]) != fy:
@@ -4795,6 +4840,10 @@ def edit_text(id: str):
         if not error:
             n = EL.apply_text(bill, vals, TEXT_FIELDS,
                               str((_AUTH.current_user() or {}).get("id") or ""))
+            if TN.record_change(bill, ti_was, ti_val,
+                                str((_AUTH.current_user() or {}).get("id") or "")):
+                bill["tax_invoice_ref"] = ti_val
+                n += 1
             return redirect(url_for("ra.view_ra", id=id, type="success",
                                     msg=(f"Invoice details updated — {n} change"
                                          f"{'' if n == 1 else 's'} logged." if n
@@ -4810,10 +4859,11 @@ def edit_text(id: str):
   <div class="form-hint" style="margin:0 0 1rem;"><span class="fh-icon">&#9888;</span>
     <span>This bill has been issued. Only the <b>text</b> of its tax invoice
     <b>{ref}</b> can be corrected here &mdash; quantity, rate and amount follow
-    the RA bill and cannot change. The number is locked. Every change is
+    the RA bill and cannot change. The tax invoice number may be set to the one Tally Prime gave. Every change is
     <b>logged</b> and shown on screen; the printed copy carries no mark.
     HSN/SAC codes: <a href="{url_for('ra.fill_hsn', id=id)}">HSN / SAC page</a>.</span></div>
   <form method="POST" action="{url_for('ra.edit_text', id=id)}">
+    {_ti_box(ti_val, bill)}
     {EL.text_fields_html(TEXT_FIELDS, vals)}
     <div style="display:flex;gap:.7rem;margin-top:1.2rem;">
       <button type="submit" class="btn">Save changes</button>
@@ -4912,6 +4962,14 @@ def edit_ra(id: str):
             new_ra, error = DN.validate_ra_no(
                 _chain_key(boq_id), next_ra_no(boq_id) - 1,
                 request.form.get("ra_no_typed"), own_ra, _ra_may_set_number())
+        # The Tally number (17 Nov 2026): read only when the form drew the box.
+        ti_was = str(bill.get("tax_invoice_ref") or "")
+        ti_now = ti_was
+        if not error and TN.FIELD in request.form and not _in_live_merge(bill):
+            ti_now, error = TN.validate(request.form.get(TN.FIELD), current=ti_was,
+                                        coll="ra_bills", rec_id=id,
+                                        required=bool(ti_was),
+                                        may=_ra_auth().may_type_ti_number())
 
         if not error:
             if new_ra != own_ra:
@@ -4919,7 +4977,9 @@ def edit_ra(id: str):
                 DN.note_ra_no(_chain_key(boq_id), new_ra)
                 DN.record_override(bill, f"RA{own_ra}", f"RA{new_ra}",
                                    str((_ra_auth().current_user() or {}).get("id") or ""))
-            tax_invoice_ref = (request.form.get("tax_invoice_ref") or bill.get("tax_invoice_ref") or "").strip()
+            tax_invoice_ref = ti_now
+            TN.record_change(bill, ti_was, ti_now,
+                             str((_ra_auth().current_user() or {}).get("id") or ""))
             po_ref = (request.form.get("po_ref") if request.form.get("po_ref") is not None else bill.get("po_ref", "")).strip()
             po_date = (request.form.get("po_date") if request.form.get("po_date") is not None else bill.get("po_date", "")).strip()
             tax_type = (request.form.get("tax_type") or bill.get("tax_type") or "cgst_sgst").strip()
@@ -4976,7 +5036,9 @@ def edit_ra(id: str):
         + DN.ra_no_field(int(bill.get("ra_no") or 0), may_override=_ra_may_set_number(),
                          typed=(request.form.get("ra_no_typed") or "")
                          if request.method == "POST" else "")
-        + "</div>")
+        + "</div>"
+        + _ti_box((request.form.get(TN.FIELD) if request.method == "POST"
+                   else None) or str(bill.get("tax_invoice_ref") or ""), bill))
     return _entry_form(
         boq, leg, prev, entered, error,
         action=url_for("ra.edit_ra", id=id),
@@ -5202,7 +5264,7 @@ def view_ra(id: str):
     </div>
   </div>
   {_flash()}
-  {HF.NOTE_CSS if hsn_note else ""}{hsn_note}{_ra_editlog().band(bill, "tax invoice")}
+  {HF.NOTE_CSS if hsn_note else ""}{hsn_note}{_ra_editlog().band(bill, "tax invoice")}{TN.history_html(bill)}
   {cancelled_html}
   {lock_html}
   {rate_note}

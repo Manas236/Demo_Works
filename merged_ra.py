@@ -104,6 +104,7 @@ import docsheet as DS
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
+import tinum as TN     # the tax invoice number as Tally gave it — the leaf (17 Nov 2026)
 import ra as RA
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr, _meta
@@ -468,6 +469,17 @@ def tax_slabs(doc) -> list:
 # `merged_ras.tax_invoice_ref`) on the ordinal — the strictest reading, the
 # one a statutory serial typed by hand gets everywhere else.
 
+def _tally_box(value: str = "", creating: bool = False) -> str:
+    """The Tally Prime tax invoice number box (17 Nov 2026, §0 79th block)."""
+    import auth as _AUTH
+    return TN.field_html(
+        value, may=_AUTH.may_type_ti_number(),
+        label="Tax Invoice No. as issued by Tally" if creating else "Tax Invoice No.",
+        hint=("Optional. When typed, it is this document's number exactly as "
+              "Tally Prime gave it, and the box above is not used." if creating
+              else ""))
+
+
 def typed_number(form, datestr: str) -> tuple:
     """`(seq, error, default_seq)` for the merged TI's number box on a form."""
     import auth as _AUTH
@@ -755,11 +767,23 @@ def create_merged():
         bills = STORE.get("ra_bills") or {}
         s = bills.get((request.form.get("supply_ra_id") or "").strip())
         i = bills.get((request.form.get("installation_ra_id") or "").strip())
-        seq, error, _dflt = typed_number(request.form, _now_date())
+        import auth as _AUTH
+        # The Tally number (17 Nov 2026, §0 seventy-ninth block): when typed,
+        # it IS the number and the series box is not consulted.
+        tally, error = TN.validate(request.form.get(TN.FIELD), coll="merged_ras",
+                                   required=False, may=_AUTH.may_type_ti_number())
+        seq = None
+        if not error and not tally:
+            seq, error, _dflt = typed_number(request.form, _now_date())
         doc = None
         if not error:
             doc, error = create(s, i, notes=(request.form.get("notes") or "").strip(),
                                 seq=seq)
+        if doc and tally:
+            import docnum as _DN
+            _DN.record_override(doc, doc.get("tax_invoice_ref"), tally,
+                                str((_AUTH.current_user() or {}).get("id") or ""))
+            doc["tax_invoice_ref"] = tally
         if doc:
             return redirect(url_for("merged_ra.view_merged", id=doc["id"],
                                     msg=f"Merged document {doc['tax_invoice_ref']} raised.",
@@ -795,6 +819,7 @@ def create_merged():
             <div class="form-group"><label>Notes</label>
               <input type="text" name="notes" value="{_esc(request.form.get('notes'))}"/></div>
             {number_field_html(_now_date(), request.form.get("doc_no_seq") or "")}
+            {_tally_box(request.form.get(TN.FIELD) or "", creating=True)}
             <button type="submit" class="btn">Raise merged document</button>"""
 
     # Opened from a BOQ's *RA · Supply & Installation* (22 October 2026): the
@@ -858,9 +883,20 @@ def edit_text(id: str):
                                 msg="A cancelled tax invoice cannot be edited."))
     error = ""
     vals = {k: str(doc.get(k) or "") for k, _l in TEXT_FIELDS}
+    # The Tally number, editable while live (17 Nov 2026, §0 79th block).
+    ti_was = str(doc.get("tax_invoice_ref") or "")
+    ti_val = ti_was
     if request.method == "POST":
         vals = EL.posted_text(request.form, TEXT_FIELDS)
-        if not vals["date"]:
+        if TN.FIELD in request.form:
+            ti_val, error = TN.validate(request.form.get(TN.FIELD), current=ti_was,
+                                        coll="merged_ras", rec_id=id,
+                                        may=_AUTH.may_type_ti_number())
+            if error:
+                ti_val = (request.form.get(TN.FIELD) or "").strip()
+        if error:
+            pass
+        elif not vals["date"]:
             error = "The tax invoice date is required."
         elif doc.get("fy") and P.fy_of(vals["date"]) != doc.get("fy"):
             error = (f"The number {_esc(doc.get('tax_invoice_ref'))} belongs to financial "
@@ -869,6 +905,10 @@ def edit_text(id: str):
         if not error:
             n = EL.apply_text(doc, vals, TEXT_FIELDS,
                               str((_AUTH.current_user() or {}).get("id") or ""))
+            if TN.record_change(doc, ti_was, ti_val,
+                                str((_AUTH.current_user() or {}).get("id") or "")):
+                doc["tax_invoice_ref"] = ti_val
+                n += 1
             return redirect(url_for("merged_ra.view_merged", id=id, type="success",
                                     msg=(f"Tax invoice details updated — {n} change"
                                          f"{'' if n == 1 else 's'} logged." if n
@@ -881,9 +921,10 @@ def edit_text(id: str):
       </div>
       <div class="form-hint" style="margin:0 0 1rem;"><span class="fh-icon">&#9888;</span>
         <span>Quantity, rate and amount follow the two RA bills and cannot change
-        here; the number is locked. Every change is <b>logged</b> and shown on
+        here; the tax invoice number may be set to the one Tally Prime gave. Every change is <b>logged</b> and shown on
         screen; the printed copy carries no mark.</span></div>
       <form method="POST" action="{url_for('merged_ra.edit_text', id=id)}">
+        {_tally_box(ti_val)}
         {EL.text_fields_html(TEXT_FIELDS, vals)}
         <div style="display:flex;gap:.7rem;margin-top:1.2rem;">
           <button type="submit" class="btn">Save changes</button>
@@ -948,7 +989,7 @@ def view_merged(id: str):
           {edit_bit}{cancel_bit}
         </div>
       </div>
-      {_EL.band(doc, "tax invoice")}
+      {_EL.band(doc, "tax invoice")}{TN.history_html(doc)}
       {approval.panel("merged_ra", doc)}
       <div class="form-section">
         <div class="section-title">&#128279; The two bills this covers</div>

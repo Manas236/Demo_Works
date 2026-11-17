@@ -71,6 +71,7 @@ import pipeline as P
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
+import tinum as TN     # the tax invoice number as Tally gave it — the leaf (17 Nov 2026)
 import docsheet as DS
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import roundoff as RO  # the rupee round-off tick and the paisa (31 Oct 2026)
@@ -278,6 +279,21 @@ def _number_control(ti_date: str, typed: str, may: bool) -> tuple:
     return seq, DN.number_field(DN.TI, _ref_for(ti_date, seq),
                                 may_override=may, typed=typed,
                                 skip_note=True)
+
+
+def _tally_may() -> bool:
+    import auth as _AUTH
+    return _AUTH.may_type_ti_number()
+
+
+def _tally_box(value: str = "", creating: bool = False) -> str:
+    """The Tally Prime tax invoice number box (17 Nov 2026, §0 79th block)."""
+    return TN.field_html(
+        value, may=_tally_may(),
+        label="or the number Tally gave" if creating else "Invoice No.",
+        hint=("Optional. When typed, it is this invoice's number exactly as "
+              "Tally Prime gave it, and the box above is not used." if creating
+              else ""))
 
 
 def _money(raw: str, default: float = 0.0) -> float:
@@ -870,16 +886,22 @@ def create_invoice(pid: str):
         #   the form and changed their mind.
         if not error:
             default_seq = SER.next_seq("TI", _fy_of(ti_date))
-            seq_used, num_err = DN.validate(DN.TI, _fy_of(ti_date),
-                                            f.get("doc_no_seq"), default_seq,
-                                            may_number)
+            # The number as Tally Prime gave it (17 Nov 2026, §0 seventy-ninth
+            # block): when typed it IS the number, the series box is not
+            # consulted and no series number is spent.
+            tally, num_err = TN.validate(f.get(TN.FIELD), coll="invoices",
+                                         required=False, may=_tally_may())
+            if not tally and not num_err:
+                seq_used, num_err = DN.validate(DN.TI, _fy_of(ti_date),
+                                                f.get("doc_no_seq"), default_seq,
+                                                may_number)
             error = error or num_err
 
         if not error:
             iid = str(uuid.uuid4())
             ti = {
                 "id":  iid,
-                "ref": _ref_for(ti_date, seq_used),
+                "ref": tally or _ref_for(ti_date, seq_used),
                 "fy":  _fy_of(ti_date),
                 "date": ti_date,
 
@@ -1137,6 +1159,7 @@ def create_invoice(pid: str):
             <div class="form-group">
               <label for="doc_no_seq">Invoice No.</label>
               {ti_number_html}
+              {_tally_box(request.form.get(TN.FIELD) or "", creating=True)}
             </div>
             <div class="form-group">
               <label for="date">Invoice Date *</label>
@@ -1332,16 +1355,22 @@ def from_boq(boq_id: str):
         #   special-case here and deliberately no second code path.
         if not error:
             default_seq = SER.next_seq("TI", _fy_of(ti_date))
-            seq_used, num_err = DN.validate(DN.TI, _fy_of(ti_date),
-                                            f.get("doc_no_seq"), default_seq,
-                                            may_number)
+            # The number as Tally Prime gave it (17 Nov 2026, §0 seventy-ninth
+            # block): when typed it IS the number, the series box is not
+            # consulted and no series number is spent.
+            tally, num_err = TN.validate(f.get(TN.FIELD), coll="invoices",
+                                         required=False, may=_tally_may())
+            if not tally and not num_err:
+                seq_used, num_err = DN.validate(DN.TI, _fy_of(ti_date),
+                                                f.get("doc_no_seq"), default_seq,
+                                                may_number)
             error = error or num_err
 
         if not error:
             iid = str(uuid.uuid4())
             ti = {
                 "id":  iid,
-                "ref": _ref_for(ti_date, seq_used),
+                "ref": tally or _ref_for(ti_date, seq_used),
                 "fy":  _fy_of(ti_date),
                 "date": ti_date,
 
@@ -1517,6 +1546,7 @@ def from_boq(boq_id: str):
             <div class="form-group">
               <label for="doc_no_seq">Invoice No.</label>
               {ti_number_html}
+              {_tally_box(request.form.get(TN.FIELD) or "", creating=True)}
             </div>
             <div class="form-group">
               <label for="date">Invoice Date *</label>
@@ -1700,7 +1730,14 @@ def edit_invoice(id: str):
         if tax_type not in dict(_PF.TAX_HEADS):
             tax_type = "exempt"
         adv = _money(f.get("advance_received"), 0.0)
-        if not v["date"]:
+        # The Tally number on an ISSUED invoice (17 Nov 2026, §0 79th block).
+        ti_was = str(ti.get("ref") or "")
+        ti_now, error = (TN.validate(f.get(TN.FIELD), current=ti_was, coll="invoices",
+                                     rec_id=id, may=_tally_may())
+                         if TN.FIELD in f else (ti_was, ""))
+        if error:
+            pass
+        elif not v["date"]:
             error = "Invoice date is required."
         elif ti.get("fy") and _fy_of(v["date"]) != ti.get("fy"):
             error = (f"The invoice number {P.esc(ti.get('ref'))} belongs to financial "
@@ -1735,6 +1772,9 @@ def edit_invoice(id: str):
                        + _PF.EL.line_diff(before_lines, lines, default_gst))
             _PF.EL.record(ti, changes, _actor_id())
             n = len(changes)
+            if TN.record_change(ti, ti_was, ti_now, _actor_id()):
+                ti["ref"] = ti_now
+                n += 1
             return redirect(url_for("invoice.view_invoice", id=id,
                                     msg=(f"Tax invoice {ti['ref']} updated — {n} change"
                                          f"{'' if n == 1 else 's'} logged." if n else
@@ -1774,13 +1814,12 @@ def edit_invoice(id: str):
       <div class="form-hint" style="margin:0 0 1rem;"><span class="fh-icon">&#9888;</span>
         <span>This invoice has been issued. Every change you save is <b>logged</b> on it
         (who, when, before &rarr; after) and shown on screen; the printed copy carries
-        no mark. The number <b>{P.esc(ti.get("ref"))}</b> cannot be changed.</span></div>
+        no mark. The number may be set to the one Tally Prime gave.</span></div>
       <form method="POST" action="{action}">
         <div class="form-section">
           <div class="section-title">Invoice</div>
           <div class="fg3">
-            <div class="form-group"><label>Invoice No.</label>
-              <div class="dnum-fixed" style="padding:.45rem 0;">{P.esc(ti.get("ref"))} &mdash; locked</div></div>
+            {_tally_box((f.get(TN.FIELD) if is_post else None) or str(ti.get("ref") or ""))}
             {box("date", "Invoice Date *", "date", " required")}
             <div class="form-group"><label for="place_of_supply">Place of Supply *</label>
               {_sel_keep("place_of_supply", _POS_STATES, vals.get("place_of_supply", ""))}</div>
@@ -2151,7 +2190,7 @@ def view_invoice(id: str):
     edit_bands = (_PF.divergence_band(_PF.ti_divergence(pi_src, ti), "proforma",
                                       "tax invoice", ti.get("ref"))
                   if pi_src else "")
-    edit_bands = _PF.EL.band(ti, "tax invoice") + edit_bands
+    edit_bands = _PF.EL.band(ti, "tax invoice") + TN.history_html(ti) + edit_bands
     # The Edit button — for whoever the gate admits, on an invoice that may
     # still be edited. The newline lives inside the string.
     edit_btn = ""

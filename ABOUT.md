@@ -427,6 +427,7 @@ Consequences you must respect when editing:
 | [buypick.py](buypick.py) | 459 | **The purchase order's item picker** (31 October 2026, CLIENT_CHANGES.md §0 sixtieth block) — the Specification library (while the catalogue is hidden) and the BOQ items (always) as `<optgroup>`s on `/purchase/create`'s rows, the cost-rate and make prefills, the search box script, and `resolve()`, which re-reads a pick's identity at POST. A **leaf**: `store` + `pipeline` at module level, `spec` and `boq` in function bodies only. §5 `/purchase`, *The item picker*; §7 gap 38. |
 | [extraitems.py](extraitems.py) | 332 | **Extra items on a document, and the optional project link** (17 November 2026, CLIENT_CHANGES.md §0 seventy-sixth block) — the repeater lifted out of `challan.py` at its second consumer, the Product Inquiry (`po_draft.py` may not import `challan.py`). `parse_extras()`, `extras_section_html()`, `extra_row_html()`, `is_extra()`, `project_link_from()`, `project_select_html()`. Defaults are the challan's own strings (its pages are byte-identical); the inquiry adds Make, Pcs and a picture by flag. A **leaf**: `store`, `pipeline`, `buypick`, `units`, `lineimage`. §5 `/po`, `/dc`. |
 | [dcpo.py](dcpo.py) | 147 | **A delivery challan raised FROM a purchase order — the shared reads** (17 November 2026, CLIENT_CHANGES.md §0 seventy-eighth block). `lines_of(po)` keys every order line (`L:<line_id>` for a line on the order's BOQ, `I:<n>` for another priced line, `X:<n>` for an extra line); `dispatched_by_key()` / `remaining_by_key()` SUM `qty` per `po_key` over the challans whose `source_po_id` is the order — derived, never stored. A **leaf** (`store` only) because `challan.py` and `purchase.py` both need it and may not import each other. §5 `/dc`. |
+| [tinum.py](tinum.py) | 165 | **The tax invoice number as Tally Prime issued it** (17 November 2026, CLIENT_CHANGES.md §0 seventy-ninth block). `validate()` — any non-blank value, trimmed, NOT forward-only; refused when another LIVE document already carries it (trimmed, case-insensitive) across `invoices.ref`, `ra_bills.tax_invoice_ref`, `merged_ras.tax_invoice_ref`, naming it; unchanged values pass with no check. `record_change()` appends `{old, new, by, at}` to `ti_number_history`; `history_html()` is screen only. A **leaf** (`store`, `pipeline`) for `docnum.py`'s reason. §3 *A document number typed by hand*, point 10. |
 | [proforma.py](proforma.py) | 1322 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 2711 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. Also the **only** module that can raise a real PO from a BOQ or convert a priced draft into one — see §2f. |
@@ -5959,6 +5960,35 @@ document_number_highwater: {"TI": {"26-27": 50}, "PI": {"*": 30}, ...}
    **Not covered:** the single-leg RA bill's statutory `tax_invoice_ref`
    (a free-text full string, no forward check — §7 gap 32) and merged-RA
    edit (no number field); the payslip carries no number.
+
+10. ⚠ **THE TAX INVOICE NUMBER FOLLOWS TALLY PRIME** (17 November 2026,
+    CLIENT_CHANGES.md §0 **seventy-ninth** block). The client's GST series is
+    issued by Tally, so the number printed on a tax invoice is whatever Tally
+    gave (`SF-3`, `125/26-27`). Through `tinum.py`, on the box named
+    `tax_invoice_ref` on every form:
+
+    | document | create | draft edit | issued edit | cancelled |
+    |---|---|---|---|---|
+    | RA bill (`ra_bills.tax_invoice_ref`) | `/ra/create` — blank mints the RI serial as before | `/ra/edit` | `/ra/edit-text` | locked (both routes refuse) |
+    | merged RA (`merged_ras.tax_invoice_ref`) | `/merged/create` — optional; when typed it replaces the MI series box | — | `/merged/edit` | locked |
+    | tax invoice (`invoices.ref`) | `/invoice/from/…`, `/invoice/from-boq/…` — optional; when typed it replaces the series box and spends no series number | — | `/invoice/edit` | locked (`can_edit()`) |
+
+    Any non-blank value, trimmed, **not forward-only**. A value already on
+    another LIVE document of the three is refused, naming it (trimmed,
+    case-insensitive; a cancelled holder does not block; an UNCHANGED value
+    is never re-checked, so a legacy collision cannot lock a record out of its
+    other edits). Every change appends `{old, new, by, at}` to
+    `ti_number_history`, drawn on the view page only (above `.doc-outer`,
+    `no-print`). The docnum trail (`number_override`) records a Tally number
+    typed at create. A leg of a live merged RA is offered no box (the merged
+    document carries the one number). `auth.may_type_ti_number()`: whoever
+    reached the page, unless their own BLOCK list names `docnum.override`.
+    No new endpoint. ⚠ The automatic minters are untouched; a Tally value is
+    skipped by the RI scan and by the TI / MI scans unless its last `/`
+    segment is digits (then it can only move the next AUTOMATIC number
+    forward). The forward-only `docnum` validator reads such a value's
+    trailing digits as an ordinal, which only matters to the series box.
+    Not done: `raboth.py` (both legs in one POST) offers no Tally box.
 
 ---
 

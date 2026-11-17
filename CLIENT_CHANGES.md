@@ -7370,6 +7370,49 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 17 November 2026, by Manas Gawde — THE TAX INVOICE NUMBER SET TO MATCH TALLY PRIME · NO CHARGE · POST-GO-LIVE PROD HOTFIX 4
+>
+> **A new block, not an amendment.** The **seventy-ninth** occasion, written
+> directly on `samruddhi-prod` from `351eaf5` (then 5 ahead / 5 behind origin,
+> nothing pulled). Recorded **"authorised, no charge"** on Manas's written
+> brief. ⚠ **It changes the fifty-fourth block's forward-only rule FOR THE TAX
+> INVOICE NUMBER when a Tally number is typed**, and the 2 November "number is
+> locked" rule on an issued RA bill, merged RA and tax invoice: Tally Prime is
+> the master of the GST series.
+>
+> **What was asked:** a tax invoice number settable on create and edit,
+> issued included, cancelled locked, on single-leg and merged RA bills and on
+> the standalone tax invoice; any non-blank trimmed value, not forward-only;
+> duplicates (trimmed, case-insensitive) across the TI, RA and merged
+> collections refused on create and edit, naming the holder; history
+> `{old, new, by, at}` on the view only; print unchanged but for the number;
+> anyone who can edit, a per-login BLOCK of `docnum.override` still winning.
+>
+> **Judgement calls, declared:**
+> 1. **No new endpoint.** The box rides on pages that exist: `/ra/create`,
+>    `/ra/edit` (draft), `/ra/edit-text` (issued), `/merged/create`,
+>    `/merged/edit`, `/invoice/from/…`, `/invoice/from-boq/…`,
+>    `/invoice/edit`. Access matrix unchanged.
+> 2. **The standalone TI was built, not skipped**: its number is `ref`, the
+>    record's own field, and setting it is a stored string — no numbering
+>    logic changed. A Tally number typed at create spends no series number.
+> 3. **On create the series box stays** beside the Tally box; the Tally box
+>    wins when filled. Blank keeps every automatic path exactly as it was.
+> 4. **An unchanged number is never re-checked for duplicates**, so a legacy
+>    collision (none on the live box today — read-only check) cannot lock a
+>    record out of its other edits. Blank is refused on an edit.
+> 5. **A leg of a live merged RA gets no box**: the merged document carries
+>    the one statutory number (Rule 46: one serial per billing).
+> 6. **`raboth.py`** (both legs + merge in one POST) was not given a box;
+>    the merged document's number is corrected on `/merged/edit` afterwards.
+> 7. Length capped at 64 characters (a storage cap, not a GST rule); control
+>    characters refused.
+> 8. The forward-only `docnum` validator still reads a typed value's trailing
+>    digits as an ordinal (`125/26-27` → 27). It matters only to the series
+>    box, whose prefill is always accepted (gap 83).
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
