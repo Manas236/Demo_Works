@@ -967,6 +967,10 @@ def list_proformas():
             if pi.get("boq_id") and not pi.get("quotation_id"):
                 src_url = url_for("boq.view_boq", id=pi.get("boq_id"))
                 src_txt = f"BOQ {P.esc(pi.get('boq_ref'))}"
+            # Raised with no source at all (17 Nov 2026): it links to itself.
+            elif not pi.get("quotation_id"):
+                src_url = view_url
+                src_txt = "No BOQ"
             rows_html += f"""
             <tr>
               <td class="td-ref">{P.esc(pi.get('ref'))}</td>
@@ -1000,6 +1004,13 @@ def list_proformas():
             Go to Quotation Register</a>
         </div>"""
 
+    # "New PI (no BOQ)" (17 Nov 2026, §0 seventy-fifth block) — drawn only for
+    # a user `/proforma/new` would admit.
+    import auth as _AUTH
+    new_btn = (f'\n          <a href="{url_for("proforma.create_standalone")}" '
+               f'class="btn">&#43;&nbsp;New PI (no BOQ)</a>'
+               if _AUTH.can_reach("proforma.create_standalone") else "")
+
     template = f"""<!DOCTYPE html><html lang="en">
     <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
     <title>{B.page_title("Proforma Invoices")}</title>{B.HEAD_ICON}
@@ -1015,7 +1026,7 @@ def list_proformas():
         </h1>
         <div style="display:flex;gap:.7rem;">
           <a href="{dash_url}" class="btn btn-ghost">&#8592; Dashboard</a>
-          <a href="{qtn_url}"  class="btn btn-ghost">Quotations</a>
+          <a href="{qtn_url}"  class="btn btn-ghost">Quotations</a>{new_btn}
         </div>
       </div>
       {tiles_html}
@@ -2041,6 +2052,230 @@ def _parent_sources(pi: dict, default_gst: float) -> list:
             lines = []
         return LE.parent_sources(lines or [], f"BOQ {boq.get('ref') or ''}", default_gst)
     return []
+
+
+# =============================================================================
+# A PROFORMA WITH NO BOQ AND NO QUOTATION — 17 November 2026
+# (CLIENT_CHANGES.md §0 seventy-fifth block)
+# =============================================================================
+#
+# ⚠ **No new arithmetic.** The lines are `lineedit.py`'s editor and parser and
+#   the figures are `lineedit.tax_figures()` — exactly what `/proforma/edit`
+#   already prices a PI with — and the advance, round-off and running
+#   position are the from-BOQ path's. The number is the ONE PI series.
+# ⚠ **The library is read, never written.** Its sizes are offered as lines to
+#   ADD through `buypick.py` (the manual PO's picker), each landing as a new,
+#   fully editable line; typing a line is the free-text path.
+
+def _spec_sources() -> list:
+    """Every library size as a `lineedit.source_entry()` — Supply, as on the quotation."""
+    import buypick as BYP
+    BYP.ensure_seeded()
+    out = []
+    for e in BYP.spec_entries():
+        ident, _err = BYP.resolve(e["value"])
+        if not ident:
+            continue
+        out.append(LE.source_entry(
+            e["value"], BYP.SPEC_GROUP, e["label"],
+            {"name": "Supply of " + ident["name"], "part_no": ident.get("part_no", ""),
+             "hsn": ident.get("hsn", ""), "unit": ident.get("unit", ""), "qty": "",
+             "price": "" if e["rate"] is None else f"{float(e['rate']):g}"}))
+    return out
+
+
+def _party_with_book(f) -> tuple:
+    """
+    `(party fields, error)` — the typed customer, with the address-book entry
+    (`party_book_id`) filling only what was left blank. Snapshotted either way.
+    """
+    party = party_from_form(f)
+    bid = (f.get("party_book_id") or "").strip()[:64]
+    if bid:
+        from address import format_address_lines
+        book = (STORE.get("addresses") or {}).get(bid)
+        if not book:
+            return party, "That address is no longer in the address book."
+        party["account_name"] = party["account_name"] or str(
+            book.get("company") or book.get("contact_name") or "").strip()
+        party["contact_person"] = party["contact_person"] or str(
+            book.get("contact_name") or "").strip()
+        party["to"] = party["to"] or "\n".join(format_address_lines(book))
+        party["bill_gstin"] = party["bill_gstin"] or str(book.get("gstin") or "").strip()
+    if not party["account_name"] and not party["to"]:
+        return party, "Name the customer, or pick one from the address book."
+    return party, ""
+
+
+@proforma_bp.route("/new", methods=["GET", "POST"])
+def create_standalone():
+    """
+    `/proforma/new` — a proforma with no BOQ and no quotation behind it.
+    The customer is typed or taken from the address book; the lines are typed
+    or added from the specification library; every figure is the existing PI
+    arithmetic. `quotation_id` and `boq_id` are present and empty.
+    """
+    f = request.form
+    is_post = request.method == "POST"
+    error = ""
+    may_number = _may_set_number()
+    resuming = is_post and FD.is_resume(f)
+    head_keys = ("date", "po_number", "po_date", "project_id", "payment_terms",
+                 "delivery_terms", "delivery_date", "dispatch_through", "incoterms",
+                 "validity_days", "notes")
+
+    if is_post and not resuming:
+        v = {k: (f.get(k) or "").strip() for k in head_keys}
+        pct = _pct(f.get("advance_pct"), DEFAULT_ADVANCE_PCT)
+        tax_type = (f.get("tax_type") or "").strip()
+        if tax_type not in dict(TAX_HEADS):
+            tax_type = "exempt"
+        party, party_err = _party_with_book(f)
+        lines = []
+        if not v["date"]:
+            error = "Invoice date is required."
+        elif not (0 < pct <= 100):
+            error = "Advance % must be greater than 0 and no more than 100."
+        elif v["validity_days"] and not v["validity_days"].isdigit():
+            error = "Validity must be a whole number of days."
+        elif v["project_id"] and v["project_id"] not in (STORE.get("projects") or {}):
+            error = "That project no longer exists. Pick another, or leave it blank."
+        elif party_err:
+            error = party_err
+        if not error:
+            lines, error = LE.parse(f.get(LE.FIELD), [], default_gst=_BOQ_DEFAULT_GST)
+        if not error:
+            default_seq = SER.next_seq("PI", "")
+            seq_used, num_err = DN.validate(DN.PI, "", f.get("doc_no_seq"),
+                                            default_seq, may_number)
+            error = num_err
+        if not error:
+            round_on = _RO().form_choice(f, legacy=True)
+            subtotal, tax_info, grand, ro, total_qty = LE.tax_figures(lines, tax_type, round_on)
+            due = _RO().apply(grand * pct / 100.0, round_on)[0]
+            pid = str(uuid.uuid4())
+            pi = {
+                "id": pid, "ref": _ref_for(seq_used), "date": v["date"],
+                "quotation_id": "", "quotation_ref": "", "quotation_date": "",
+                "boq_id": "", "boq_ref": "",
+                **party,
+                "line_items": lines, "subtotal": subtotal, "tax_type": tax_type,
+                "tax_info": tax_info, "grand_total": grand, "round_off": ro,
+                _RO().FIELD: round_on, "total_qty": total_qty,
+                "po_number": v["po_number"], "po_date": v["po_date"],
+                "advance_pct": pct, "amount_due": due, "project_id": v["project_id"],
+                "prior_invoiced": 0.0, "prior_refs": [],
+                "balance_due": round(grand - due, 2),
+                **{k: v[k] for k in ("payment_terms", "delivery_terms", "delivery_date",
+                                     "dispatch_through", "incoterms", "validity_days",
+                                     "notes")},
+                "company_branch": "", "auth_signatory": "",
+            }
+            LI.fill_from_library(pi["line_items"])
+            STORE["proformas"][pid] = pi
+            DN.note_used(DN.PI, "", seq_used)
+            DN.record_override(pi, _ref_for(default_seq), pi["ref"], _actor_id())
+            return redirect(url_for("proforma.view_proforma", id=pid,
+                                    msg=f"Proforma invoice {pi['ref']} created.",
+                                    type="success"))
+
+    if is_post:
+        rows = LE.posted_rows(f.get(LE.FIELD))
+        vals = {k: (f.get(k) or "").strip() for k in head_keys}
+        vals.update(party_from_form(f), advance_pct=(f.get("advance_pct") or "").strip(),
+                    tax_type=(f.get("tax_type") or "").strip(),
+                    party_book_id=(f.get("party_book_id") or "").strip())
+        round_shown = _RO().form_choice(f, legacy=True)
+    else:
+        rows = []
+        vals = {"date": _today(), "advance_pct": f"{DEFAULT_ADVANCE_PCT:g}",
+                "tax_type": "cgst_sgst", "ship_same": "1"}
+        round_shown = True
+
+    from address import picker_options
+    book_opts = picker_options("— fill blanks from the address book —",
+                               selected=vals.get("party_book_id", ""))
+    p_opts = '<option value="">&#8212; none &#8212;</option>'
+    for proj_id, proj in sorted((STORE.get("projects") or {}).items(),
+                                key=lambda kv: str(kv[1].get("name", "")).lower()):
+        sel = " selected" if proj_id == vals.get("project_id") else ""
+        p_opts += f'<option value="{P.esc(proj_id)}"{sel}>{P.esc(proj.get("name"))}</option>'
+    tax_opts = "".join(f'<option value="{k}"{" selected" if k == vals.get("tax_type") else ""}>{lbl}</option>'
+                       for k, lbl in TAX_HEADS)
+    _seq, number_html = _number_control((f.get("doc_no_seq") or "") if is_post else "",
+                                        may_number)
+    form_action = url_for("proforma.create_standalone")
+
+    def box(name, label, kind="text", extra=""):
+        return (f'<div class="form-group"><label for="{name}">{label}</label>'
+                f'<input type="{kind}" id="{name}" name="{name}" value="{P.esc(vals.get(name))}"{extra}/></div>')
+
+    return _page(f"""<!DOCTYPE html><html lang="en">
+    <head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+    <title>{B.page_title("New Proforma Invoice")}</title>{B.HEAD_ICON}
+    {BASE_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{PROFORMA_STYLES}{DN.NUMBER_STYLES}</head>
+    <body>{_nav()}
+    <main>
+      <div class="page-top">
+        <h1>New <span>Proforma Invoice</span></h1>
+        <a href="{url_for("proforma.list_proformas")}" class="btn btn-ghost">&#8592; All proformas</a>
+      </div>
+      {_alert(error, "error")}
+      <div class="form-hint" style="margin:0 0 1rem;"><span class="fh-icon">&#9432;</span>
+        <span><b>No BOQ and no quotation.</b> Type the customer or fill it from the
+        address book, and type the lines or add them from the specification
+        library. Figures are worked exactly as on every proforma.</span></div>
+      <form method="POST" action="{form_action}">
+        <div class="form-section">
+          <div class="section-title">Invoice</div>
+          <div class="fg3">
+            <div class="form-group"><label for="doc_no_seq">Proforma No.</label>{number_html}</div>
+            {box("date", "Invoice Date *", "date", " required")}
+            {box("po_number", "Customer PO No.")}
+            {box("po_date", "Customer PO Date", "date")}
+            <div class="form-group"><label for="project_id">Project</label>
+              <select id="project_id" name="project_id">{p_opts}</select></div>
+            {box("advance_pct", "Advance % *", "number", ' min="0.01" max="100" step="any" required')}
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="section-title">Address book</div>
+          <div class="form-group"><label for="party_book_id">Customer from the address book</label>
+            <select id="party_book_id" name="party_book_id">{book_opts}</select></div>
+        </div>
+        {party_form_html(vals)}
+        <div class="form-section">
+          <div class="section-title">Terms</div>
+          <div class="fg2">
+            <div class="form-group"><label for="payment_terms">Payment Terms</label>
+              {_sel_keep("payment_terms", _PAY_TERMS, vals.get("payment_terms", ""))}</div>
+            <div class="form-group"><label for="delivery_terms">Terms of Delivery</label>
+              {_sel_keep("delivery_terms", _DEL_TERMS, vals.get("delivery_terms", ""))}</div>
+            {box("delivery_date", "Delivery Date", "date")}
+            <div class="form-group"><label for="dispatch_through">Dispatch Through</label>
+              {_sel_keep("dispatch_through", _DISPATCH, vals.get("dispatch_through", ""))}</div>
+            <div class="form-group"><label for="incoterms">Incoterms</label>
+              {_sel_keep("incoterms", _INCOTERMS, vals.get("incoterms", ""))}</div>
+            {box("validity_days", "PI Validity (days)", "number", ' min="0" step="1"')}
+            <div class="form-group span2"><label for="notes">Note on the invoice</label>
+              <input type="text" id="notes" name="notes" value="{P.esc(vals.get("notes"))}"/></div>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="section-title">Lines</div>
+          <div class="form-group" style="max-width:280px;"><label for="tax_type">Tax head</label>
+            <select id="tax_type" name="tax_type">{tax_opts}</select></div>
+          {LE.editor_html(rows, form_selector='form[action$="' + form_action + '"]',
+                          sources=_spec_sources())}
+          {_RO().checkbox_html(round_shown)}
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn">Raise proforma invoice</button>
+          <a href="{url_for("proforma.list_proformas")}" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+      {FD.script('form[action$="/proforma/new"]', "proforma invoice", resumed=resuming)}
+    </main></body></html>""")
 
 
 @proforma_bp.route("/edit/<id>", methods=["GET", "POST"])

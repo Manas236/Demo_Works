@@ -7199,6 +7199,20 @@ one automatic.
 > on a challan picked into an RA bill is still listed as *Unmatched, not
 > prefilled*.
 >
+> **What the PO / PI check found.** **Manual PO: no change.** `/purchase/create`
+> already takes no BOQ and no quotation (`quotation_id` optional), with
+> Specification-library + BOQ picks (`buypick.py`) and free-text extra parts.
+> **PI: a gap, closed.** A proforma could be raised only from a quotation or a
+> BOQ. `/proforma/new` (`proforma.create_standalone`, under the existing
+> `proforma.create`) raises one with neither: customer typed or filled from the
+> address book, lines typed or added from the library, figures by
+> `lineedit.tax_figures()` — the arithmetic `/proforma/edit` already uses, so
+> **no new tax logic** — and **no edit to `quotation.py` or `product.py`**.
+> Declared: a new endpoint, so `docs/ACCESS_MATRIX.md` was regenerated (223
+> endpoints; no permission, role or grant moved) and PROGRESS.md's B5 count
+> follows it; `/proforma/` page golden re-baselined `main` only, +77 bytes,
+> the button, proved the same way as `/dc/`.
+>
 > **The gate is not lifted and this is not a precedent.**
 
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.

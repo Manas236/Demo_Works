@@ -7364,6 +7364,7 @@ nothing. The PI number is not released. **`proforma.delete` alone from
 | `GET /proforma/view/<id>` | `view_proforma` — the printed document |
 | `GET,POST /proforma/pictures/<id>` | `pictures` — a picture beside each line, `proforma.create` (21 Oct 2026) — §5 *Pictures* |
 | `GET,POST /proforma/from-boq/<boq_id>` | `from_boq` — raise a PI FROM a bill of quantities, `proforma.create` (22 Oct 2026) — *Raised from a BOQ* below |
+| `GET,POST /proforma/new` | `create_standalone` — a PI with **no BOQ and no quotation** (17 Nov 2026, CLIENT_CHANGES.md §0 seventy-fifth block), `proforma.create`. Customer typed, blanks filled from the address book (`party_book_id`); lines typed or added from the specification library (`buypick.py` → `lineedit.source_entry()`, library never written); figures are `lineedit.parse()` + `lineedit.tax_figures()` — `/proforma/edit`'s own arithmetic, no new tax logic; the one PI series; round-off tick as everywhere. `quotation_id` and `boq_id` present and empty; the register says *No BOQ*. Also on `docnum.override`'s list. |
 
 **A proforma invoice is a different instrument from the quotation it comes out
 of**, which is why it is a separate record and not a render mode. A quotation

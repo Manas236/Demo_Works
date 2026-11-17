@@ -499,8 +499,12 @@ PAGES = {
         {"head": "024abb845bc90f71", "shell": "a1e6c63a6d4c6ac2", "chrome": "98789be45a2abed2", "main": "af5042bbe07aad09"}),   # §0 66th ruling 4: moved=['main'], +50 bytes
     ("quotations",      "/quotation/"):                ("f7af9a508c3c8d73", 70825,
         {"head": "6a1ba8490f2cdcd0", "shell": "a1e6c63a6d4c6ac2", "chrome": "428580664f0626bf", "main": "7ec3c661ae9cc372"}),   # §0 59th B1: moved=['chrome'], -8 bytes
-    ("proformas",       "/proforma/"):                 ("be95d64b9f9caa5d", 79225,
-        {"head": "f1e920fa8474816f", "shell": "a1e6c63a6d4c6ac2", "chrome": "5acba1eef816bda5", "main": "d21f84af1fd212ea"}),   # table fit 30 Oct 2026: moved=['head', 'main'], +3092 bytes
+    # ⚠ re-baselined 17 November 2026 — `main` ONLY, +77 bytes (§0
+    #   seventy-fifth block): the "New PI (no BOQ)" button. With that one
+    #   anchor removed the page hashed to the OLD be95d64b9f9caa5d / 79225
+    #   exactly. The old `main` was d21f84af1fd212ea.
+    ("proformas",       "/proforma/"):                 ("8a6ceea36fadc4e1", 79302,
+        {"head": "f1e920fa8474816f", "shell": "a1e6c63a6d4c6ac2", "chrome": "5acba1eef816bda5", "main": "2668bd554eef397a"}),   # §0 75th: moved=['main'], +77 bytes
     # was 838b42d5894c49c6 / 83043 / head 28aee5e42e857421 before the
     # 23 Sep 2026 cancellation overprint. ⚠ `head` ALONE moved (+1,575 bytes of
     # `.lc-*` rules in INVOICE_STYLES, which every page in this module loads);

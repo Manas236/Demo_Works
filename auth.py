@@ -638,6 +638,7 @@ PANEL_PERMISSIONS = {
     #   and never again — see docnum.py and ABOUT.md §5.
     "docnum.override": ("invoice.create_invoice", "invoice.from_boq",
                         "proforma.create_proforma", "proforma.from_boq",
+                        "proforma.create_standalone",   # 17 Nov 2026
                         "proforma.edit_proforma",
                         # 31 Oct 2026, §0 sixty-fourth block, Part 3.
                         "ra.create_ra", "receipt.new_receipt",
@@ -974,6 +975,8 @@ ROUTE_PERMISSIONS = {
     # block). The same document in the same series, so the same permission
     # as raising it from a quotation / a proforma — none was minted.
     "proforma.from_boq":          "proforma.create",
+    # 17 Nov 2026, §0 seventy-fifth block — a PI with no BOQ and no quotation.
+    "proforma.create_standalone": "proforma.create",
     # 31 Oct 2026, §0 sixty-fourth block — correct an issued proforma.
     "proforma.edit_proforma":     "proforma.create",
     "invoice.list_invoices":      "invoice.view",
