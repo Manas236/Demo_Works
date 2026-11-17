@@ -17395,6 +17395,35 @@ text is unchanged, and every reference to them was moved with them.*
     **Nothing else in the file was audited for the same staleness** — only the
     sixteen documents this pass re-baselined were measured, and of those, this
     was the only one.
+119. 🟡 **The 17 November 2026 print sweep — what it found and did NOT fix —
+    OPEN.** Every print route (13 documents, 64 variants, 242 A4 pages in
+    headless Chromium: normal, 64-line stress, sparse, signed, draft,
+    cancelled, every copy) was rendered with `tools/print_sweep/` and looked
+    at. Fixed in that pass: the title band under the banner (§2d, §6), the
+    merged RA's unheaded eighth column and its orphaned leg heading (§2d), and
+    the older measurement sheet's "Measured" column (§5 `/measurement`).
+    Found and deliberately left, each a layout or content decision, not a clip:
+    - **A signature panel alone on the last page.** The golden 3-line TAX
+      INVOICE prints GSTIN/PAN and the signature panel on a page of their own
+      (two pages per copy, six for the set), and so does the golden PROFORMA
+      (two pages); long BOQ, PO and RA bills end the same way. The panel is
+      `break-inside:avoid` and does not fit under the terms, so nothing is cut
+      — it moves whole. Every page count was measured unchanged by the 14 Nov
+      logo move, so this predates it. Pulling the panel back means shortening
+      the terms, the margins or the type on signed-off documents: a decision
+      for the client, not a print fix.
+    - **Figures past their column.** A TOTAL quantity of 7 digits (10,00,000
+      units on one document) runs 3.3 px past the Qty column on the tax
+      invoice, proforma, quotation and PO; an amount of Rs 100 crore or more
+      (13 digits) runs 5.1 px past the Amount column on the RA bill and the
+      work order. Widening those columns moves every pinned sell-side document
+      for a figure this client's work does not reach, and the quotation's
+      widths are in the frozen `quotation.py`.
+    - ⚠ **`quotation._amount_in_words()` is wrong from Rs 1,000 crore and
+      CRASHES from Rs 2,000 crore** — "Ten Hundred Crore" for 1,000 crore, then
+      `IndexError` in `_three()` and a 500 on the print route. Content, not
+      layout, and in the frozen `quotation.py`; every document's words come
+      from it.
 
 ## 8. Stale docs — do not trust these two files
 
