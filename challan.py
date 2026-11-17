@@ -11,6 +11,8 @@ Routes
 ------
   GET       /dc/              — register of delivery challans
   GET,POST  /dc/create?boq=   — pick the lines, name the consignee, raise it
+  GET,POST  /dc/create?noboq=1 — a challan with NO BOQ: extra items only,
+                                optional project (17 Nov 2026, §0 75th block)
   GET       /dc/view/<id>     — the document, with the action bar
   GET       /dc/print/<id>    — the document alone, ready for Ctrl+P
   GET,POST  /dc/edit/<id>     — consignee and dispatch fields only, never lines
@@ -102,6 +104,11 @@ from flask import Blueprint, redirect, request, url_for
 
 import boq as BQ
 import boqpick as BP
+# The manual PO's Specification-library picker (31 Oct 2026), reused for a
+# challan's EXTRA items (17 Nov 2026, §0 seventy-fifth block). A leaf: it reads
+# the library out of STORE and never writes it.
+import buypick as BYP
+import units as UN     # the shared unit list — the leaf (29 Oct 2026)
 import branding as B
 # "Is this challan billed, and by which RA bill?" (CLIENT_CHANGES.md §0,
 # fortieth block, ruling C). A LEAF that reads the bills out of STORE, so this
@@ -421,6 +428,220 @@ def consignee_from(form) -> tuple:
 
 
 # =============================================================================
+# A CHALLAN WITHOUT A BOQ, AND EXTRA ITEMS ON ANY CHALLAN
+# (17 November 2026, CLIENT_CHANGES.md §0 seventy-fifth block)
+# =============================================================================
+#
+# ⚠ **An extra item is NOT a schedule line.** It is stored with
+#   `line_id: None` and `extra: True`, and every reader that keys on
+#   `line_id` — `dispatched_by_line()`, `over_dispatched()`,
+#   `ra.dispatched_in()`, `pnl.py`'s dispatched figure — already skips a row
+#   with no id. So an extra is never dispatched against a line, never capped,
+#   and never billed on an RA bill.
+#
+# ⚠ **A no-BOQ challan has `boq_id: None`.** It takes the SAME number series,
+#   it never reaches `/ra/create`'s challan picker (it is on no revision
+#   chain), and it reaches a project only through its own `project_id`, with
+#   the name snapshotted beside it (`charge.py`'s pattern).
+#
+# ⚠ **A record without these keys renders exactly as before.** Nothing is
+#   migrated; `_document_html()` is untouched and prints every stored row.
+
+# The rows the extras section opens with; "+ Add item" adds more.
+DEFAULT_EXTRA_ROWS = 1
+MAX_EXTRA_ROWS = 100
+EXTRA_DESC_MAX = 500
+
+# The refusal `picked_lines()` makes when nothing is ticked. A BOQ challan
+# carrying extra items may tick no BOQ line, so the caller recognises it.
+EMPTY_PICK_MSG = ("No lines are ticked. A challan with nothing on it is not a "
+                  "document — tick what is going out, or cancel.")
+
+
+def is_extra(row) -> bool:
+    """A row the operator added by hand — never a BOQ line."""
+    return bool(isinstance(row, dict) and row.get("extra")
+                and not BQ._line_id(row.get("line_id")))
+
+
+def has_boq_lines(dc) -> bool:
+    """
+    Does this challan carry at least one BOQ line? A challan whose only rows
+    are extras has nothing an RA bill could claim, so it is never offered as
+    unbilled.
+    """
+    return any(isinstance(r, dict) and not r.get("is_header")
+               and BQ._line_id(r.get("line_id"))
+               for r in (dc or {}).get("items") or [])
+
+
+def project_link_from(form) -> tuple:
+    """
+    `({project_id, project_name}, error)` for a no-BOQ challan's optional
+    project. The name is SNAPSHOTTED, as on a charge, so the register still
+    reads if the project is renamed or deleted later.
+    """
+    pid = (form.get("project_id") or "").strip()[:64]
+    if not pid:
+        return {"project_id": "", "project_name": ""}, ""
+    proj = (STORE.get("projects") or {}).get(pid)
+    if not proj:
+        return {}, "That project no longer exists. Pick another, or leave it blank."
+    return {"project_id": pid, "project_name": str(proj.get("name") or "")}, ""
+
+
+def parse_extras(form) -> tuple:
+    """
+    `(rows, error)` — the extra items typed or picked on the form.
+
+    Per row: a **description** (typed, or the Specification-library pick's
+    name when the box is left blank), a **quantity above 0**, and a unit (the
+    pick's unit when none is chosen). A row left wholly blank is skipped. The
+    pick is re-read from the library NOW (`buypick.resolve()`); the browser's
+    copy is never trusted, and the library is never written.
+    """
+    descs = form.getlist("xi_desc")
+    qtys = form.getlist("xi_qty")
+    units = form.getlist("xi_unit")
+    picks = form.getlist("line_product_id")
+    n_rows = max(len(descs), len(qtys), len(units), len(picks))
+
+    def _at(seq, n):
+        return str(seq[n] if n < len(seq) else "").strip()
+
+    out = []
+    for n in range(n_rows):
+        desc = _at(descs, n)[:EXTRA_DESC_MAX]
+        qty_raw = _at(qtys, n)
+        unit = _at(units, n)[:30]
+        pick = _at(picks, n)
+        if not (desc or qty_raw or pick):
+            continue        # a unit alone is the dropdown's default, not a row
+        ident = {}
+        if pick:
+            if not pick.startswith(BYP.SPEC_PREFIX):
+                return [], f"Extra item {n + 1}: pick from the specification library, or type it."
+            ident, err = BYP.resolve(pick)
+            if err:
+                return [], f"Extra item {n + 1}: {err}"
+        desc = desc or str(ident.get("name") or "")[:EXTRA_DESC_MAX]
+        if not desc:
+            return [], f"Extra item {n + 1} has no description. Say what is going out."
+        try:
+            qty = float(qty_raw)
+        except ValueError:
+            return [], f"Quantity for '{desc}' must be a number above 0."
+        if not qty > 0:
+            return [], f"Quantity for '{desc}' must be above 0."
+        unit = unit or str(ident.get("unit") or "")[:30]
+        row = {"line_id": None, "extra": True, "is_header": False,
+               "item_no": "", "description": desc, "unit": unit,
+               "qty": float(qty),
+               "source": "spec" if ident else "typed"}
+        if ident:
+            row["src_spec_id"] = ident.get("src_spec_id")
+            row["src_vidx"] = ident.get("src_vidx")
+        out.append(row)
+    if len(out) > MAX_EXTRA_ROWS:
+        return [], (f"{len(out)} extra items; the limit is {MAX_EXTRA_ROWS}. "
+                    f"Raise more than one challan.")
+    return out, ""
+
+
+# Plain text, SINGLE braces: spliced into the page as a value, never re-parsed
+# as an f-string.
+_EXTRA_JS = """<script>
+/* One more extra-item row, cloned from the template. */
+function dcAddExtra() {
+  var t = document.getElementById('dc-xi-tpl');
+  var box = document.getElementById('dc-xi-rows');
+  if (t && box) box.appendChild(t.content.cloneNode(true));
+}
+/* A library pick fills a BLANK description; a typed one is never replaced. */
+function dcPick(sel) {
+  var row = sel.closest('.line-row');
+  var d = row ? row.querySelector('input[name="xi_desc"]') : null;
+  var o = sel.options[sel.selectedIndex];
+  if (d && o && o.value && !d.value) d.value = o.getAttribute('title') || o.textContent;
+}
+</script>"""
+
+
+def _extra_row_html(desc="", qty="", unit="", pick="", spec=None) -> str:
+    """One extra-item row. Styled on the element: the challan sheets are pinned."""
+    opts = ('<option value="">&mdash; or pick from the specification library &mdash;</option>'
+            + BYP.groups_html(pick, with_spec=True, spec=spec, boq=[]))
+    return f"""
+        <div class="line-row" style="display:grid;grid-template-columns:minmax(150px,1fr) minmax(180px,1.4fr) minmax(200px,2fr) 110px 90px 34px;gap:.5rem;align-items:center;margin-bottom:.45rem;">
+          <input type="text" placeholder="{BYP.FIND_PLACEHOLDER}" oninput="findItem(this)" aria-label="Search the library"/>
+          <select name="line_product_id" onchange="dcPick(this)" aria-label="Specification library">{opts}</select>
+          <input type="text" name="xi_desc" value="{P.esc(desc)}" maxlength="{EXTRA_DESC_MAX}"
+                 placeholder="Description (required)" aria-label="Description"/>
+          {UN.select_html("xi_unit", unit, blank="Unit")}
+          <input type="number" name="xi_qty" value="{P.esc(qty)}" min="0" step="any"
+                 placeholder="Qty" aria-label="Quantity"/>
+          <button type="button" class="btn-remove-line" title="Remove this item"
+                  onclick="this.closest('.line-row').remove();">&#215;</button>
+        </div>"""
+
+
+def _extras_section_html(stored: list = None, posted=None) -> str:
+    """
+    The *Extra items* section — on every challan form, BOQ or not.
+
+    Filled from what was just posted (a refused POST comes back as typed),
+    else from the challan's stored extras, else one blank row.
+    """
+    BYP.ensure_seeded()
+    spec = BYP.spec_entries()
+    rows_data = []
+    if posted is not None:
+        descs, qtys = posted.getlist("xi_desc"), posted.getlist("xi_qty")
+        units, picks = posted.getlist("xi_unit"), posted.getlist("line_product_id")
+        for n in range(max(len(descs), len(qtys), len(units), len(picks))):
+            rows_data.append(tuple(seq[n] if n < len(seq) else ""
+                                   for seq in (descs, qtys, units, picks)))
+    else:
+        for r in stored or []:
+            pick = (f"{BYP.SPEC_PREFIX}{r.get('src_spec_id')}:{r.get('src_vidx')}"
+                    if r.get("src_spec_id") else "")
+            rows_data.append((str(r.get("description") or ""),
+                              BQ._fmt_qty(r.get("qty") or 0),
+                              str(r.get("unit") or ""), pick))
+    while len(rows_data) < DEFAULT_EXTRA_ROWS:
+        rows_data.append(("", "", "", ""))
+    rows = "".join(_extra_row_html(*r, spec=spec) for r in rows_data)
+    return f"""
+    <div class="form-section">
+      <div class="section-title">Extra items &mdash; not on the schedule</div>
+      <p style="font-size:.82rem;color:var(--muted);margin:-.4rem 0 .9rem;">
+        Anything going out that is not a BOQ line. Type it, or pick it from the
+        specification library. <b>Description and a quantity above 0 are
+        required.</b> Extra items print on the challan after the BOQ lines and
+        are never billed on an RA bill.
+      </p>
+      <input type="hidden" name="xi_present" value="1"/>
+      <div id="dc-xi-rows">{rows}</div>
+      <template id="dc-xi-tpl">{_extra_row_html(spec=spec)}</template>
+      <button type="button" class="btn btn-ghost" onclick="dcAddExtra()"
+              style="margin-top:.3rem;">+ Add item</button>
+    </div>
+    {BYP.FIND_JS}{_EXTRA_JS}"""
+
+
+def _project_select_html(selected: str = "") -> str:
+    """A no-BOQ challan's optional project — `charge.py`'s picker."""
+    opts = '<option value="">No project</option>'
+    for pid, p in sorted((STORE.get("projects") or {}).items(),
+                         key=lambda kv: str(kv[1].get("name") or "")):
+        sel = " selected" if pid == selected else ""
+        opts += f'<option value="{P.esc(pid)}"{sel}>{P.esc(p.get("name"))}</option>'
+    return (f'<div class="form-group"><label for="project_id">Project (optional)</label>'
+            f'<select id="project_id" name="project_id">{opts}</select>'
+            f'<div class="fld-hint">Shows this challan on that project&rsquo;s page.</div></div>')
+
+
+# =============================================================================
 # THE LINE PICKER — only the lines that were ticked
 # =============================================================================
 
@@ -434,9 +655,20 @@ def picked_lines(raw: str, boq: dict) -> tuple:
     """
     return BP.picked_lines(
         raw, boq, with_pcs=False, max_lines=MAX_DC_LINES,
-        empty_msg=("No lines are ticked. A challan with nothing on it is not a "
-                   "document — tick what is going out, or cancel."),
+        empty_msg=EMPTY_PICK_MSG,
         cap_msg="Raise more than one challan.")
+
+
+def _with_extras(boq_items, boq_err: str, extras: list) -> tuple:
+    """
+    BOQ lines first, then the extras — the order they print in. Ticking no BOQ
+    line is allowed when there is an extra item: the challan still has a line.
+    """
+    if boq_err == EMPTY_PICK_MSG and extras:
+        return list(extras), ""
+    if boq_err:
+        return [], boq_err
+    return list(boq_items or []) + list(extras), ""
 
 
 def _validate(form) -> tuple:
@@ -610,6 +842,10 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     and which sheet rows matched no line. It is the importer's own escaped
     markup, spliced under the alert; "" emits the form it always emitted.
     """
+    # A no-BOQ challan (17 Nov 2026) has `boq` None: no picker, no import, a
+    # project picker instead, and the extras section is its only lines.
+    standalone = not boq
+    boq = boq or {}
     boq_ref = P.esc(boq.get("ref") or "")
     editing = dc is not None
     # Import from Excel (18 October 2026). Drawn on the create form only, and
@@ -622,11 +858,14 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     #   already billed on an RA bill (`held`), which is lock 3: its lines are
     #   the billed record. Excel imports onto the edit form too.
     lines_locked = editing and bool(held)
-    import_btn = ("" if lines_locked else
+    import_btn = ("" if lines_locked or standalone else
                   f'\n      <a href="{url_for("docimport.upload_challan", boq=boq.get("id"), **({"dc": dc["id"]} if editing else {}))}" '
                   f'class="btn btn-ghost">&#128229; Import from Excel</a>')
     action = (url_for("challan.edit_dc", id=dc["id"]) if editing
+              else url_for("challan.create_dc", noboq=1) if standalone
               else url_for("challan.create_dc", boq=boq.get("id")))
+    back_url = (url_for("challan.list_dcs") if standalone
+                else url_for("boq.view_boq", id=boq.get("id")))
 
     # ⚠ **The number is typeable on CREATE and nowhere else.** `edit_dc()`
     #   says in terms that `ref` is "deliberately untouched — an edit never
@@ -665,7 +904,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
                   f'<p class="field-hint">These lines are <b>locked</b>: this challan is '
                   f'billed on RA{P.esc(bill.get("ra_no") or "")} and its lines are the '
                   f'billed record (lock 3). Every other field stays editable.</p></div>')
-    elif not lines_locked:
+    elif not standalone:
         picker = BP.grid_html(
             boq,
             title="Lines going out",
@@ -685,6 +924,22 @@ def _entry_form(boq: dict, data: dict, error: str = "",
             qty_of=data.get("_qty"),
             with_pcs=False)
 
+    # Extra items — every challan, create and edit. Not drawn while the lines
+    # are locked (billed): the stored extras then stay exactly as they are.
+    extras_html = "" if lines_locked else _extras_section_html(
+        [r for r in (dc or {}).get("items") or [] if is_extra(r)],
+        data.get("_xposted"))
+    if standalone:
+        intro_html = ("<b>No BOQ</b> &middot; a standalone challan. Its lines are "
+                      "the items below; it is never billed on an RA bill.")
+        project_html = _project_select_html(data.get("project_id", ""))
+    else:
+        intro_html = (f'Against <b>{boq_ref}</b> &middot; {P.esc(boq.get("project_name") or "")}\n'
+                      f'    &middot; {P.esc(boq.get("account_name") or "")}')
+        project_html = ""
+    back_html = ("" if standalone else
+                 f'\n      <a href="{back_url}" class="btn btn-ghost">&#8592; {boq_ref}</a>')
+
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -699,8 +954,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
   <div class="page-top">
     <h1>{"Edit Delivery" if editing else "Delivery"} <span>Challan</span></h1>
     <div style="display:flex;gap:.7rem;">{import_btn}
-      <a href="{url_for('challan.list_dcs')}" class="btn btn-ghost">All Challans</a>
-      <a href="{url_for('boq.view_boq', id=boq.get('id'))}" class="btn btn-ghost">&#8592; {boq_ref}</a>
+      <a href="{url_for('challan.list_dcs')}" class="btn btn-ghost">All Challans</a>{back_html}
     </div>
   </div>
 
@@ -709,12 +963,11 @@ def _entry_form(boq: dict, data: dict, error: str = "",
   <div class="set-intro" style="background:var(--surface);border:1px solid var(--border);
        border-left:3px solid var(--brand);border-radius:var(--radius);
        padding:.9rem 1.1rem;margin-bottom:1.2rem;font-size:.86rem;line-height:1.6;">
-    Against <b>{boq_ref}</b> &middot; {P.esc(boq.get("project_name") or "")}
-    &middot; {P.esc(boq.get("account_name") or "")}<br/>
+    {intro_html}<br/>
     {dc_number_html}
   </div>
 
-  <form method="POST" action="{action}" onsubmit="return {"saveJSON()" if not lines_locked else "true"};">
+  <form method="POST" action="{action}" onsubmit="return {"saveJSON()" if not (lines_locked or standalone) else "true"};">
     <input type="hidden" name="dc_json" id="dc_json" value=""/>
 
     <div class="form-section">
@@ -755,15 +1008,15 @@ def _entry_form(boq: dict, data: dict, error: str = "",
         <div class="form-group span2">
           <label for="notes">Notes</label>
           <textarea id="notes" name="notes" rows="2">{P.esc(data.get('notes', ''))}</textarea>
-        </div>
+        </div>{project_html}
       </div>
     </div>
 
     {picker}
-
+{extras_html}
     <div class="set-actions" style="display:flex;gap:.75rem;margin-top:1.4rem;">
       <button type="submit" class="btn">{"Save changes" if editing else "Raise challan"}</button>
-      <a href="{url_for('boq.view_boq', id=boq.get('id'))}" class="btn btn-ghost">Cancel</a>
+      <a href="{back_url}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
   {"" if editing else FD.script('form[action*="/dc/create"]', "delivery challan", resumed=request.method == "POST" and FD.is_resume(request.form))}
@@ -785,7 +1038,7 @@ DC_COLUMNS = (("c-sno", "Sr.No."), ("c-desc", "Description"),
               ("c-qty", "Qty"), ("c-unit", "Unit"))
 
 
-def _document_html(dc: dict, copy_label: str = None) -> str:
+def _document_html(dc: dict, copy_label: str = None, screen: bool = False) -> str:
     """
     The printed delivery challan, on the shared A4 sheet.
 
@@ -832,10 +1085,16 @@ def _document_html(dc: dict, copy_label: str = None) -> str:
         </tr>"""
             continue
         sno += 1
+        # `/dc/view` ONLY (`screen`, 17 Nov 2026): a chip on an extra item.
+        # `/dc/print` never passes it, so the printed sheet is byte-identical.
+        chip = (' <span class="no-print" style="display:inline-block;font-size:.7rem;'
+                'padding:0 .4rem;border:1px solid #E5B400;border-radius:999px;'
+                'background:#FFFBEB;color:#6B4E00;white-space:nowrap;">'
+                'Extra item, not billed</span>') if screen and is_extra(row) else ""
         rows += f"""
         <tr class="row-item">
           <td class="c-sno">{sno}</td>
-          <td class="c-desc">{P.esc(row.get("description", ""))}</td>
+          <td class="c-desc">{P.esc(row.get("description", ""))}{chip}</td>
           <td class="c-qty">{BQ._fmt_qty(row.get("qty") or 0)}</td>
           <td class="c-unit">{P.esc(row.get("unit", ""))}</td>
         </tr>"""
@@ -978,6 +1237,9 @@ def _raise_ra_btn(dc_id: str, dc: dict, held) -> str:
     """
     if held or str(dc.get("boq_id") or "") not in (STORE.get("boqs") or {}):
         return ""
+    # Extras only (17 Nov 2026): nothing on it an RA bill could claim.
+    if not has_boq_lines(dc):
+        return ""
     import auth as _AUTH
     if not _AUTH.can_reach("ra.create_ra"):
         return ""
@@ -1029,6 +1291,10 @@ def list_dcs():
                 f'Billed in {P.esc(held[1].get("ref")) or "&mdash;"}</a></div>'
                 ) if held else ""
         n = sum(1 for r in dc.get("items", []) if not r.get("is_header"))
+        # A no-BOQ challan (17 Nov 2026) links to no schedule.
+        boq_cell = (f'<a class="reg-sub reg-ref" href="{url_for("boq.view_boq", id=dc.get("boq_id"))}">'
+                    f'{P.esc(dc.get("boq_ref"))}</a>' if dc.get("boq_id")
+                    else '<span style="color:var(--muted);">No BOQ</span>')
         # ⚠ **THE PRIMARY ACTION, and it is the actual defect the owner
         #   reported: he could not tell what to click.** Their series has no
         #   prefix (ABOUT.md §5 `/dc`), so challan 54 rendered as the two
@@ -1047,7 +1313,7 @@ def list_dcs():
           <td>{P.esc(dc.get("date"))}</td>
           <td>{P.esc(dc.get("consignee_name")) or '&mdash;'}</td>
           <td>{P.esc(dc.get("dispatch_to")) or '&mdash;'}</td>
-          <td><a class="reg-sub reg-ref" href="{url_for('boq.view_boq', id=dc.get('boq_id', ''))}">{P.esc(dc.get("boq_ref"))}</a></td>
+          <td>{boq_cell}</td>
           <td>{P.esc(dc.get("project_name")) or '&mdash;'}</td>
           <td class="num">{n}</td>
           <td class="reg-acts">
@@ -1058,6 +1324,13 @@ def list_dcs():
 
     empty = ('<div class="reg-empty">No delivery challans yet. Raise one from '
              'a bill of quantities.</div>')
+
+    # "New DC (no BOQ)" (17 Nov 2026, §0 seventy-fifth block) — beside the
+    # BOQ entry, drawn only for a user `/dc/create` would admit.
+    import auth as _AUTH
+    new_btn = (f'\n      <a href="{url_for("challan.create_dc", noboq=1)}" '
+               f'class="btn">&#43;&nbsp;New DC (no BOQ)</a>'
+               if _AUTH.can_reach("challan.create_dc") else "")
 
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -1073,7 +1346,7 @@ def list_dcs():
   <div class="page-top">
     <h1>Delivery <span>Challans</span></h1>
     <div style="display:flex;gap:.7rem;">
-      <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">Bills of Quantities</a>
+      <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">Bills of Quantities</a>{new_btn}
     </div>
   </div>
 
@@ -1119,6 +1392,10 @@ def create_dc(imported: dict = None):
     `line_id` by `picked_lines()` exactly as a ticked line is.
     """
     boq_id = (imported or {}).get("boq_id") or request.args.get("boq") or ""
+    # A challan with NO BOQ (17 Nov 2026, §0 seventy-fifth block): asked for
+    # explicitly, so a stale or missing `?boq=` still refuses as it always did.
+    if not boq_id and not imported and request.args.get("noboq"):
+        return _create_standalone()
     boq = (STORE.get("boqs") or {}).get(boq_id)
     if not boq:
         return redirect(url_for("boq.list_boqs",
@@ -1153,8 +1430,10 @@ def create_dc(imported: dict = None):
         return _entry_form(boq, data)
 
     data, error = _validate(request.form)
-    items, line_error = ([], "") if error else picked_lines(data["dc_json"], boq)
-    error = error or line_error
+    extras, x_error = parse_extras(request.form)
+    items, line_error = ([], "") if error else _with_extras(
+        *picked_lines(data["dc_json"], boq), extras)
+    error = error or x_error or line_error
 
     # ⚠ **In the SAVE path, never on a GET** — §0's fifty-fourth block,
     #   item A point 9. `_spend_ref()` below is what moves the counter, and it
@@ -1179,6 +1458,7 @@ def create_dc(imported: dict = None):
                            if isinstance(r, dict)}
         data["_qty"] = {BQ._line_id(r.get("line_id")): r.get("qty")
                         for r in posted if isinstance(r, dict)}
+        data["_xposted"] = request.form
         return _entry_form(boq, data, "" if resuming else error)
 
     cid = new_id()
@@ -1218,6 +1498,65 @@ def create_dc(imported: dict = None):
     return redirect(url_for("challan.view_dc", id=cid, msg=msg, type="success"))
 
 
+def _create_standalone():
+    """
+    `/dc/create?noboq=1` — a challan with NO BOQ (17 Nov 2026, §0
+    seventy-fifth block). The same form, the same consignee, dispatch and
+    number rules, and the SAME series; its lines are extra items only, and it
+    may name a project. `boq_id` is None, so no revision chain, no
+    over-dispatch band and no RA bill ever reaches it.
+    """
+    if request.method == "GET":
+        return _entry_form(None, {
+            "date": _date.today().isoformat(),
+            "dispatch_mode": DEFAULT_DISPATCH_MODE,
+            "consignee_name": B.COMPANY_LEGAL or B.COMPANY_NAME,
+        })
+
+    data, error = _validate(request.form)
+    link, link_error = project_link_from(request.form)
+    extras, x_error = parse_extras(request.form)
+    error = error or link_error or x_error
+    if not error and not extras:
+        error = ("A challan with nothing on it is not a document — add at "
+                 "least one item that is going out.")
+    may_number = _may_set_number()
+    default_seq = int(SET.dc_series()["next_no"] or 1)
+    seq_used, num_err = DN.validate(DN.DC, "", data["doc_no_seq"],
+                                    default_seq, may_number)
+    error = error or num_err
+    resuming = FD.is_resume(request.form)
+    if error or resuming:
+        data["project_id"] = (request.form.get("project_id") or "").strip()[:64]
+        data["_xposted"] = request.form
+        return _entry_form(None, data, "" if resuming else error)
+
+    cid = new_id()
+    default_ref = SET.dc_ref_of(SET.dc_series())
+    STORE.setdefault("delivery_challans", {})[cid] = {
+        "id": cid,
+        "ref": _spend_ref(seq_used),
+        "date": data["date"],
+        "boq_id": None,
+        "boq_ref": "",
+        **link,
+        "site_location": "",
+        "account_name": "",
+        **data["consignee"],
+        "dispatch_mode": data["dispatch_mode"],
+        "dispatch_to": data["dispatch_to"],
+        "po_no": data["po_no"],
+        "po_date": data["po_date"],
+        "notes": data["notes"],
+        "items": extras,
+        "company_branch": "", "auth_signatory": "",
+    }
+    DN.record_override(STORE["delivery_challans"][cid], default_ref,
+                       STORE["delivery_challans"][cid]["ref"], _actor_id())
+    return redirect(url_for("challan.view_dc", id=cid,
+                            msg="Delivery challan raised.", type="success"))
+
+
 @challan_bp.route("/view/<id>")
 def view_dc(id: str):
     dc = (STORE.get("delivery_challans") or {}).get(id)
@@ -1228,6 +1567,9 @@ def view_dc(id: str):
     # Read ONCE, and both the band and the button branch on it — so this page
     # cannot say "billed" and offer to bill it in the same breath.
     held = DCB.billed_by(id)
+    boq_btn = (f'\n    <a href="{url_for("boq.view_boq", id=dc.get("boq_id"))}" '
+               f'class="btn btn-ghost">{P.esc(dc.get("boq_ref"))}</a>'
+               if dc.get("boq_id") else "")
 
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -1246,8 +1588,7 @@ def view_dc(id: str):
     Challan <span style="color:var(--brand);">{P.esc(dc.get('ref'))}</span>
   </h1>
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
-    <a href="{url_for('challan.list_dcs')}" class="btn btn-ghost">All Challans</a>
-    <a href="{url_for('boq.view_boq', id=dc.get('boq_id', ''))}" class="btn btn-ghost">{P.esc(dc.get('boq_ref'))}</a>{_raise_ra_btn(id, dc, held)}
+    <a href="{url_for('challan.list_dcs')}" class="btn btn-ghost">All Challans</a>{boq_btn}{_raise_ra_btn(id, dc, held)}
     <a href="{url_for('challan.edit_dc', id=id)}" class="btn btn-ghost">Edit</a>
     <a href="{url_for('challan.delete_dc', id=id)}" class="btn btn-ghost">Delete</a>
     <a href="{url_for('challan.print_dc', id=id)}" class="btn">&#128438;&nbsp;Print</a>
@@ -1258,7 +1599,7 @@ def view_dc(id: str):
 {_over_dispatch_band(dc)}{EL.band(dc, "delivery challan")}
 
 <div class="doc-outer">
-{_document_html(dc)}
+{_document_html(dc, screen=True)}
 </div>
 
 <footer style="margin-top:1.75rem;">
@@ -1314,7 +1655,8 @@ DC_EDIT_FIELDS = (("date", "Challan date"), ("dispatch_mode", "Dispatch mode"),
                   ("dispatch_to", "Dispatch to"), ("po_no", "PO No."),
                   ("po_date", "PO date"), ("notes", "Note"),
                   ("consignee_name", "Consignee"), ("consignee_addr", "Consignee address"),
-                  ("consignee_phone", "Consignee phone"), ("consignee_id", "Consignee (address book)"))
+                  ("consignee_phone", "Consignee phone"), ("consignee_id", "Consignee (address book)"),
+                  ("project_name", "Project"))
 
 
 @challan_bp.route("/edit/<id>", methods=["GET", "POST"])
@@ -1340,7 +1682,9 @@ def edit_dc(id: str, imported: dict = None):
     if not dc:
         return redirect(url_for("challan.list_dcs",
                                 msg="That challan no longer exists.", type="error"))
-    boq = (STORE.get("boqs") or {}).get(dc.get("boq_id", "")) or {
+    # A no-BOQ challan (17 Nov 2026) edits with `boq` None — no picker.
+    standalone = not dc.get("boq_id")
+    boq = None if standalone else (STORE.get("boqs") or {}).get(dc.get("boq_id", "")) or {
         "id": dc.get("boq_id", ""), "ref": dc.get("boq_ref", ""),
         "project_name": dc.get("project_name", ""),
         "account_name": dc.get("account_name", ""), "line_items": [],
@@ -1358,10 +1702,12 @@ def edit_dc(id: str, imported: dict = None):
             "consignee_name": dc.get("consignee_name", ""),
             "consignee_addr": dc.get("consignee_addr", ""),
             "consignee_phone": dc.get("consignee_phone", ""),
+            "project_id": dc.get("project_id", ""),
             "_chosen": {BQ._line_id(r.get("line_id")) for r in dc.get("items") or []
-                        if not r.get("is_header")},
+                        if not r.get("is_header") and not is_extra(r)},
             "_qty": {BQ._line_id(r.get("line_id")): r.get("qty")
-                     for r in dc.get("items") or [] if not r.get("is_header")},
+                     for r in dc.get("items") or []
+                     if not r.get("is_header") and not is_extra(r)},
         }
 
     if request.method == "GET":
@@ -1374,8 +1720,28 @@ def edit_dc(id: str, imported: dict = None):
 
     data, error = _validate(request.form)
     items = None
-    if not error and data["dc_json"] and not held:
-        items, error = picked_lines(data["dc_json"], boq)
+    # Extra items (17 Nov 2026). Read only when the form drew the section
+    # (`xi_present`) and the lines are not locked; otherwise the stored
+    # extras are carried over untouched.
+    stored_extras = [r for r in dc.get("items") or [] if is_extra(r)]
+    stored_boq = [r for r in dc.get("items") or [] if not is_extra(r)]
+    read_extras = not held and bool(request.form.get("xi_present"))
+    extras, x_error = (parse_extras(request.form) if read_extras
+                       else (stored_extras, ""))
+    error = error or x_error
+    link = {}
+    if standalone and not error:
+        link, error = project_link_from(request.form)
+    if not error and not held:
+        if standalone:
+            items = list(extras) if read_extras else None
+        elif data["dc_json"]:
+            items, error = _with_extras(*picked_lines(data["dc_json"], boq), extras)
+        elif read_extras:
+            items = stored_boq + list(extras)
+        if items is not None and not items:
+            error = ("A challan with nothing on it is not a document — tick a "
+                     "BOQ line or add an extra item.")
     own_seq = DN.ordinal_of(dc.get("ref"))
     seq_now = own_seq
     if not error:
@@ -1393,6 +1759,9 @@ def edit_dc(id: str, imported: dict = None):
                             for r in posted if isinstance(r, dict)}
         else:
             data.update({k: v for k, v in _current().items() if k.startswith("_")})
+        if read_extras:
+            data["_xposted"] = request.form
+        data["project_id"] = (request.form.get("project_id") or "").strip()[:64]
         return _entry_form(boq, data, error, dc=dc, held=held)
 
     # 31 Oct 2026, §0 sixty-fourth block, Part 2 — a challan is a SENT
@@ -1406,6 +1775,8 @@ def edit_dc(id: str, imported: dict = None):
                 "notes"):
         dc[key] = data[key]
     dc.update(data["consignee"])
+    if standalone:
+        dc.update(link)
     changes = EL.diff(before, dc, DC_EDIT_FIELDS)
     if items is not None:
         dc["items"] = items
@@ -1462,7 +1833,7 @@ def delete_dc(id: str):
   <div class="card" style="border:1px solid var(--border);border-radius:10px;padding:1.2rem;">
     <p>Delete delivery challan <b>{P.esc(dc.get('ref'))}</b> consigned to
        <b>{P.esc(dc.get('consignee_name')) or 'an unnamed consignee'}</b>, raised
-       against {P.esc(dc.get('boq_ref'))}?</p>
+       {('against ' + P.esc(dc.get('boq_ref'))) if dc.get('boq_id') else 'without a BOQ'}?</p>
     <p style="font-size:.85rem;color:var(--muted);">
       This cannot be undone. <b>The number is not released</b> &mdash; the next
       challan takes the next one in the series, because {P.esc(dc.get('ref'))}
@@ -1480,6 +1851,10 @@ def delete_dc(id: str):
     boq_id = dc.get("boq_id", "")
     ref = dc.get("ref", "")
     STORE["delivery_challans"].pop(id, None)
+    if not boq_id:   # a no-BOQ challan (17 Nov 2026) goes back to the register
+        return redirect(url_for("challan.list_dcs",
+                                msg=f"Challan {ref} deleted. Its number is not reissued.",
+                                type="success"))
     return redirect(url_for("boq.view_boq", id=boq_id,
                             msg=f"Challan {ref} deleted. Its number is not reissued.",
                             type="success"))

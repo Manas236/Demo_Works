@@ -2188,8 +2188,14 @@ def challans_on_chain(boq_id: str) -> list:
     not import `challan.py`.
     """
     chain = set(revision_chain(boq_id))
+    # ⚠ A challan carrying NO BOQ line — only extra items (17 Nov 2026, §0
+    #   seventy-fifth block) — has nothing a bill could claim, so it is never
+    #   offered as unbilled. A no-BOQ challan is on no chain already.
     rows = [(cid, dc) for cid, dc in (STORE.get("delivery_challans") or {}).items()
-            if str(dc.get("boq_id") or "") in chain]
+            if str(dc.get("boq_id") or "") in chain
+            and any(isinstance(r, dict) and not r.get("is_header")
+                    and BQ._line_id(r.get("line_id"))
+                    for r in dc.get("items") or [])]
     rows.sort(key=lambda kv: (str(kv[1].get("date") or ""),
                               str(kv[1].get("ref") or ""), str(kv[0])))
     return rows

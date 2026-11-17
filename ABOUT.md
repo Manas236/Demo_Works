@@ -12151,10 +12151,32 @@ Every change is on `edit_log` with the screen-only band; `/dc/print` and its
 Original / Duplicate / Triplicate labels are unchanged. A POST without
 `dc_json` (a pre-2-Nov tab) leaves the lines alone.
 
+⚠ **A challan WITHOUT a BOQ, and EXTRA items on any challan — 17 November
+2026** (CLIENT_CHANGES.md §0 **seventy-fifth** block, prod hotfix, no charge).
+`/dc/create?noboq=1` ("New DC (no BOQ)" on the register) raises a challan with
+**`boq_id: None`**, in the **same series and counter**, with an optional
+**`project_id` + snapshotted `project_name`** (`charge.py`'s pattern) — and
+`projectview._raised_add(..., own_project=True)` lists it on that project.
+Every challan form (create and edit, BOQ or not) carries an **Extra items**
+section: Description (required), Qty (> 0), Unit (`units.py`), typed or
+picked from the specification library through **`buypick.py`** — the manual
+PO's picker, re-read at POST by `buypick.resolve()`, the library never
+written. An extra is stored **`line_id: None, extra: True`** after the BOQ
+lines and prints in the same four columns; `/dc/view` alone draws an
+*Extra item, not billed* chip (`_document_html(screen=True)`; `/dc/print`
+never passes it, so a challan without extras prints byte-for-byte as
+before). Every `line_id` reader already skips it; **`ra.challans_on_chain()`
+leaves out a challan with no BOQ line**, so an extras-only challan is never
+offered as unbilled and draws no *Raise RA*. A challan needs one line overall.
+On edit the extras are re-read only when the form drew them (`xi_present`) and
+never while the lines are locked. No route, permission or role moved. A
+record without the new keys renders exactly as before; nothing is migrated.
+
 | Route | View |
 |---|---|
 | `GET /dc/` | `list_dcs` — register, newest first. ⚠ **One of only two pages in this app an owner has ever opened**, and the one he could not tell what to click on — see *"The two register SCREENS"* under `/attendance` |
-| `GET,POST /dc/create?boq=<id>` | `create_dc` — the **line picker**, then the consignee |
+| `GET,POST /dc/create?boq=<id>` | `create_dc` — the **line picker**, extra items, then the consignee |
+| `GET,POST /dc/create?noboq=1` | `create_dc` → `_create_standalone()` — no BOQ: extra items, optional project (17 Nov 2026) |
 | `GET /dc/view/<id>` | `view_dc` — the document, its action bar, and the over-dispatch band |
 | `GET /dc/print/<id>` | `print_dc` — the document alone |
 | `GET,POST /dc/edit/<id>` | `edit_dc` — consignee and dispatch fields only, never the lines |

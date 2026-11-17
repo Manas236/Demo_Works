@@ -529,8 +529,15 @@ PAGES = {
         {"head": "988fb2a12fb791bb", "shell": "a1e6c63a6d4c6ac2", "chrome": "8c53e352bfe5210d", "main": "6da1dc1aca0606c4"}),   # table fit 30 Oct 2026: moved=['head', 'main'], +3092 bytes
     ("draft POs",       "/po/"):                       ("8314ea723a0fdcc8", 74268,
         {"head": "ee075a3c146a36b3", "shell": "a1e6c63a6d4c6ac2", "chrome": "2188f23e97ff0ab1", "main": "9db6cea2e6477047"}),   # table fit 30 Oct 2026: moved=['head', 'main'], +3084 bytes
-    ("challans",        "/dc/"):                       ("e6c7cbc444975fe1", 76333,
-        {"head": "660a40e2abebd6f2", "shell": "a1e6c63a6d4c6ac2", "chrome": "1d76c188613d8d80", "main": "30651a1c7dcacad9"}),   # §0 59th B1: moved=['chrome'], -8 bytes
+    # ⚠ re-baselined 17 November 2026 — `main` ONLY, +78 bytes (§0
+    #   seventy-fifth block): the "New DC (no BOQ)" button beside Bills of
+    #   Quantities. Measured before the baseline was touched: the page with
+    #   that one 78-byte anchor removed hashed to the OLD whole-page digest
+    #   e6c7cbc444975fe1 / 76333 exactly. `head`, `shell`, `chrome` unmoved;
+    #   every existing register row is byte-identical. The old values:
+    #       ("e6c7cbc444975fe1", 76333, {..., "main": "30651a1c7dcacad9"})
+    ("challans",        "/dc/"):                       ("4cbc2f3213bf9726", 76411,
+        {"head": "660a40e2abebd6f2", "shell": "a1e6c63a6d4c6ac2", "chrome": "1d76c188613d8d80", "main": "fb9885b0fb024f3c"}),   # §0 75th: moved=['main'], +78 bytes
     ("measurements",    "/measurement/"):              ("f9e05bb4a913e6f8", 72046,
         {"head": "e07a8c7af120014b", "shell": "a1e6c63a6d4c6ac2", "chrome": "263eda7ebc35c9f7", "main": "689dfe3e81057d9f"}),   # table fit 30 Oct 2026: moved=['head', 'main'], +3109 bytes
     # ⚠ **RE-BASELINED 8 October 2026 — `main` ONLY, and for the OWNER ONLY**,

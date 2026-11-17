@@ -7166,6 +7166,41 @@ one automatic.
 > banner. Previews: `docs/previews/2026-11-14-logo/`. **Not deployed** — prod
 > waits for the client's OK.
 
+> ### ⚠ AUTHORISATION — 17 November 2026, by Manas Gawde — DELIVERY CHALLAN WITHOUT A BOQ, EXTRA ITEMS ON ANY CHALLAN, AND A PO / PI NO-BOQ CHECK · NO CHARGE · POST-GO-LIVE PROD HOTFIX
+>
+> **A new block, not an amendment.** Every earlier block stands. This is the
+> **seventy-fifth** occasion, written **directly on the production box**
+> (`samruddhi-prod`, branch `antigravity-dev`, then 0 ahead / 5 behind
+> origin — nothing pulled). Manas chose **"Authorise, no charge"** when asked
+> to record this block before any code was written.
+>
+> **What was asked:** (A) a delivery challan with no BOQ — `boq_id` None,
+> consignee picker + free text, optional project with a snapshotted name;
+> (B) *Add extra item* rows on every challan, create and edit — Description,
+> Qty > 0, Unit — reusing the manual PO's Specification-library picker, never
+> writing the library, stored `line_id` None, `extra` True; (C) extras print
+> in the same four columns after the BOQ lines, copy labels, sign/stamp and
+> the 16 Nov title fix intact, the DC print golden byte-identical; (D) no-BOQ
+> challans never on the RA-from-DC picker, rows without `line_id` skipped, an
+> extras-only challan never "unbilled", a screen-only *Extra item, not
+> billed* chip; (E) the same DC series; (F) a no-BOQ challan with a project
+> shows on it; (G) existing permissions, no access-matrix change, no
+> migration. Then: confirm a manual PO needs no BOQ or quotation, and a
+> proforma can be raised without a BOQ — building a no-BOQ PI only if it
+> needs no edit to frozen `quotation.py` / `product.py` and no new tax logic.
+>
+> **Judgement calls, declared:** the library picker offers the
+> **Specification library only** (not the PO's "BOQ items" group — a BOQ line
+> taken as an extra would escape dispatch tracking); "Kg" already exists in
+> `units.DEFAULTS`, so the unit list is unchanged; while a challan's lines
+> are locked (billed, lock 3) its extras are locked with them; `/dc/`'s page
+> golden re-baselined `main` only, +78 bytes, the button, proved by stripping
+> it back to the old digest; `ra.unmatched_rows()` is untouched, so an extra
+> on a challan picked into an RA bill is still listed as *Unmatched, not
+> prefilled*.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

@@ -1416,12 +1416,18 @@ def view_project(id: str):
     # ⚠ `link` is a LITERAL `url_for` per kind, never `url_for(endpoint)`:
     #   `tests/test_page_reachability.py` builds the link graph from literal
     #   endpoint names and caps computed ones.
-    def _raised_add(endpoint, link, kind, coll, ref_key, amount_key="", status_fn=None):
+    def _raised_add(endpoint, link, kind, coll, ref_key, amount_key="", status_fn=None,
+                    own_project=False):
         if not auth.can_reach(endpoint):
             return
         for rid, d in (STORE.get(coll) or {}).items():
             if str(d.get("boq_id") or "") not in _proj_boq_ids:
-                continue
+                # `own_project` (17 Nov 2026, §0 seventy-fifth block): a
+                # delivery challan raised WITHOUT a BOQ is listed on the
+                # project its own `project_id` names.
+                if not (own_project and not d.get("boq_id")
+                        and str(d.get("project_id") or "") == id):
+                    continue
             status = (status_fn(d) if status_fn else str(d.get("status") or ""))
             amt = _amt(_total_of(d, amount_key)) if amount_key else "&mdash;"
             _raised.append((str(d.get("date") or ""), kind,
@@ -1434,7 +1440,8 @@ def view_project(id: str):
     _raised_add("merged_ra.view_merged", lambda i: url_for("merged_ra.view_merged", id=i), "Merged RA", "merged_ras",
                 "tax_invoice_ref", "grand_total",
                 lambda d: str(d.get("status") or "live").title())
-    _raised_add("challan.view_dc", lambda i: url_for("challan.view_dc", id=i), "Delivery challan", "delivery_challans", "ref")
+    _raised_add("challan.view_dc", lambda i: url_for("challan.view_dc", id=i), "Delivery challan", "delivery_challans", "ref",
+                own_project=True)
     _raised_add("measurement.view_ms", lambda i: url_for("measurement.view_ms", id=i), "Measurement sheet", "measurements", "ref")
     _raised_add("po_draft.view_po", lambda i: url_for("po_draft.view_po", id=i), "Product inquiry", "purchase_orders", "ref")
     # Receipts (31 Oct 2026, C2) — money received against an RA bill raised
