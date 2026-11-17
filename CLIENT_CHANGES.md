@@ -7318,6 +7318,58 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 17 November 2026, by Manas Gawde — A DELIVERY CHALLAN FROM A PURCHASE ORDER · NO CHARGE · POST-GO-LIVE PROD HOTFIX 3
+>
+> **A new block, not an amendment.** The **seventy-eighth** occasion, written
+> directly on `samruddhi-prod` from `1c90ab4` (then 4 ahead / 5 behind
+> origin, nothing pulled). Recorded **"authorised, no charge"** on Manas's
+> written brief.
+>
+> **What was asked:** a challan raised from a purchase order — *Create DC* on
+> the order's view (not on a Cancelled order, refused server-side too) and a
+> *DC from PO* chooser on the register; every order line ticked at its
+> remainder (ordered minus dispatched on live challans from it, derived),
+> amber over the remainder but saved, nothing ticked refused, no rates;
+> `source_po_id` / `source_po_ref`; a BOQ order's BOQ lines keeping `line_id`
+> so RA-from-DC counts them, a no-BOQ order's lines and every order extra
+> line as challan extras; the project from the order; the consignee never the
+> vendor, prefilled from the order's delivery address; `po_no` / `po_date`
+> left typed by hand; an ordinary challan in every other respect, print
+> goldens byte-identical; *Dispatched on DCs* on the order's view, its print
+> unchanged; existing permissions only.
+>
+> **Judgement calls, declared:**
+> 1. **A leaf, `dcpo.py`**, holds the order's keyed lines and the dispatched
+>    sum: `challan.py` and `purchase.py` may not import each other and both
+>    need the same answer. The route is `?po=` / `?frompo=1` on the existing
+>    `/dc/create` — no new endpoint, no access-matrix change.
+> 2. **"Non-cancelled DCs": a challan has no cancelled state** (no cancel
+>    route, no status; the live box's 4 challans carry none). A DELETED
+>    challan frees its quantity; `dcpo` also skips a record marked cancelled.
+>    No cancel feature was built.
+> 3. **"BOQ-linked" means the order line's `line_id` is a line ON the
+>    order's BOQ.** A line added by hand to a product inquiry carries a minted
+>    id on no BOQ; it becomes an extra so it cannot be tallied against a BOQ
+>    line. An order whose BOQ is no longer in the store gives a no-BOQ challan.
+>    A superseded BOQ revision is still used (it is on the revision chain).
+> 4. A BOQ-linked line is snapshotted through the ordinary picker, so its
+>    description, unit and spec header are the BOQ's — exactly a BOQ
+>    challan's line — not the order's wording.
+> 5. **Project**: offered (prefilled, editable) on a no-BOQ challan only; a
+>    BOQ challan's project is its BOQ's, as for every BOQ challan.
+> 6. **Consignee name blank**, address from the order's `delivery_to` (the
+>    ordinary challan opens at our own name; the brief said blank otherwise).
+> 7. Over the remainder: an amber note on the form, a derived screen-only
+>    band on `/dc/view`, and the saved message — no new alert style.
+> 8. `po_key` survives an edit (BOQ rows by `line_id`; extras by a hidden
+>    `xi_ref` that `extraitems.py` carries behind a flag, off by default, so
+>    every other challan form is byte-identical). `I:`/`X:` keys are positions
+>    on the order.
+> 9. A test forbids the word "cancelled" in `challan.py`; the leaf's helper
+>    is named `is_withdrawn_po()`.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

@@ -93,6 +93,7 @@ def parse_extras(form, *, desc_max: int = EXTRA_DESC_MAX,
                  with_make: bool = False, make_max: int = 60,
                  with_pcs: bool = False, with_image: bool = False,
                  stored: list = None,
+                 with_ref: bool = False, allowed_refs=None,
                  what_msg: str = "Say what is going out.",
                  cap_msg: str = "Raise more than one challan.") -> tuple:
     """
@@ -116,6 +117,11 @@ def parse_extras(form, *, desc_max: int = EXTRA_DESC_MAX,
     makes = form.getlist("xi_make") if with_make else []
     pcses = form.getlist("xi_pcs") if with_pcs else []
     images = form.getlist("xi_image") if with_image else []
+    # `with_ref` (17 Nov 2026, §0 seventy-eighth block): a hidden `xi_ref`
+    # per row carries the purchase-order line a challan row came from
+    # (`po_key`) through an edit. Kept only when it is in `allowed_refs`, so a
+    # crafted POST cannot point a row at another order's line.
+    refs = form.getlist("xi_ref") if with_ref else []
     n_rows = max(len(descs), len(qtys), len(units), len(picks))
 
     def _at(seq, n):
@@ -162,6 +168,11 @@ def parse_extras(form, *, desc_max: int = EXTRA_DESC_MAX,
         if with_image:
             posted = _at(images, n)
             LI.apply_choice(row, posted, _allowed_for(row, posted, stored))
+        if with_ref:
+            ref = _at(refs, n)
+            if ref and ref in (allowed_refs or ()):
+                row["po_key"] = ref
+                row["source"] = "po"
         out.append(row)
     if len(out) > MAX_EXTRA_ROWS:
         return [], (f"{len(out)} extra items; the limit is {MAX_EXTRA_ROWS}. "
@@ -199,7 +210,7 @@ def _js(pfx: str) -> str:
 def extra_row_html(desc="", qty="", unit="", pick="", spec=None, *,
                    pfx: str = "dc", desc_max: int = EXTRA_DESC_MAX,
                    make=None, make_max: int = 60, pcs=None,
-                   image_row: dict = None) -> str:
+                   image_row: dict = None, ref=None) -> str:
     """
     One extra-item row. Styled on the element: the sheets are pinned.
 
@@ -209,10 +220,14 @@ def extra_row_html(desc="", qty="", unit="", pick="", spec=None, *,
     """
     opts = ('<option value="">&mdash; or pick from the specification library &mdash;</option>'
             + BYP.groups_html(pick, with_spec=True, spec=spec, boq=[]))
+    # `ref` not None (17 Nov 2026): the hidden purchase-order line key. ""
+    # when None, so a row without one is byte-for-byte what it was.
+    ref_box = ("" if ref is None else
+               f'<input type="hidden" name="xi_ref" value="{P.esc(ref)}"/>')
     if make is None and pcs is None and image_row is None:
         return f"""
         <div class="line-row" style="display:grid;grid-template-columns:minmax(150px,1fr) minmax(180px,1.4fr) minmax(200px,2fr) 110px 90px 34px;gap:.5rem;align-items:center;margin-bottom:.45rem;">
-          <input type="text" placeholder="{BYP.FIND_PLACEHOLDER}" oninput="findItem(this)" aria-label="Search the library"/>
+          <input type="text" placeholder="{BYP.FIND_PLACEHOLDER}" oninput="findItem(this)" aria-label="Search the library"/>{ref_box}
           <select name="line_product_id" onchange="{pfx}Pick(this)" aria-label="Specification library">{opts}</select>
           <input type="text" name="xi_desc" value="{P.esc(desc)}" maxlength="{desc_max}"
                  placeholder="Description (required)" aria-label="Description"/>
@@ -237,7 +252,7 @@ def extra_row_html(desc="", qty="", unit="", pick="", spec=None, *,
                f'maxlength="{PCS_MAX}" placeholder="Pcs" aria-label="Pieces"/>')
     return f"""
         <div class="line-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:.5rem;align-items:center;margin-bottom:.45rem;">
-          <input type="text" placeholder="{BYP.FIND_PLACEHOLDER}" oninput="findItem(this)" aria-label="Search the library"/>
+          <input type="text" placeholder="{BYP.FIND_PLACEHOLDER}" oninput="findItem(this)" aria-label="Search the library"/>{ref_box}
           <select name="line_product_id" onchange="{pfx}Pick(this)" aria-label="Specification library">{opts}</select>
           <input type="text" name="xi_desc" value="{P.esc(desc)}" maxlength="{desc_max}"
                  placeholder="Description (required)" aria-label="Description"/>{make_box}
@@ -265,7 +280,7 @@ def extras_section_html(stored: list = None, posted=None, *,
                         desc_max: int = EXTRA_DESC_MAX,
                         with_make: bool = False, make_max: int = 60,
                         with_pcs: bool = False, with_image: bool = False,
-                        fmt_qty=None) -> str:
+                        fmt_qty=None, with_ref: bool = False) -> str:
     """
     The *Extra items* section.
 
@@ -278,16 +293,16 @@ def extras_section_html(stored: list = None, posted=None, *,
     BYP.ensure_seeded()
     spec = BYP.spec_entries()
     extra = with_make or with_pcs or with_image
-    rows_data = []   # (desc, qty, unit, pick, make, pcs, image_id)
+    rows_data = []   # (desc, qty, unit, pick, make, pcs, image_id, ref)
     if posted is not None:
         descs, qtys = posted.getlist("xi_desc"), posted.getlist("xi_qty")
         units, picks = posted.getlist("xi_unit"), posted.getlist("line_product_id")
         makes, pcses = posted.getlist("xi_make"), posted.getlist("xi_pcs")
-        imgs = posted.getlist("xi_image")
+        imgs, refs = posted.getlist("xi_image"), posted.getlist("xi_ref")
         for n in range(max(len(descs), len(qtys), len(units), len(picks))):
             rows_data.append(tuple(seq[n] if n < len(seq) else ""
                                    for seq in (descs, qtys, units, picks,
-                                               makes, pcses, imgs)))
+                                               makes, pcses, imgs, refs)))
     else:
         for r in stored or []:
             pick = (f"{BYP.SPEC_PREFIX}{r.get('src_spec_id')}:{r.get('src_vidx')}"
@@ -297,14 +312,15 @@ def extras_section_html(stored: list = None, posted=None, *,
                               fmt_qty(q) if fmt_qty else f"{float(q):g}",
                               str(r.get("unit") or ""), pick,
                               str(r.get("make") or ""), str(r.get("pcs") or ""),
-                              LI.image_of(r)))
+                              LI.image_of(r), str(r.get("po_key") or "")))
     while len(rows_data) < DEFAULT_EXTRA_ROWS:
-        rows_data.append(("", "", "", "", "", "", ""))
+        rows_data.append(("", "", "", "", "", "", "", ""))
 
     def _row(d=None):
-        d = d or ("", "", "", "", "", "", "")
+        d = d or ("", "", "", "", "", "", "", "")
         if not extra:
-            return extra_row_html(*d[:4], spec=spec, pfx=pfx, desc_max=desc_max)
+            return extra_row_html(*d[:4], spec=spec, pfx=pfx, desc_max=desc_max,
+                                  ref=d[7] if with_ref else None)
         img_row = None
         if with_image:
             img_row = {"description": d[0]}

@@ -547,8 +547,12 @@ PAGES = {
     #   e6c7cbc444975fe1 / 76333 exactly. `head`, `shell`, `chrome` unmoved;
     #   every existing register row is byte-identical. The old values:
     #       ("e6c7cbc444975fe1", 76333, {..., "main": "30651a1c7dcacad9"})
-    ("challans",        "/dc/"):                       ("4cbc2f3213bf9726", 76411,
-        {"head": "660a40e2abebd6f2", "shell": "a1e6c63a6d4c6ac2", "chrome": "1d76c188613d8d80", "main": "fb9885b0fb024f3c"}),   # §0 75th: moved=['main'], +78 bytes
+    # ⚠ AND AGAIN 17 November 2026 — `main` ONLY, +74 bytes (§0 seventy-
+    #   eighth block): the "DC from PO" button. Measured in this fixture: the
+    #   page with that one 74-byte anchor removed hashed to the OLD
+    #   4cbc2f3213bf9726 / 76411 exactly. Old main fb9885b0fb024f3c.
+    ("challans",        "/dc/"):                       ("fccde7d9708bdb60", 76485,
+        {"head": "660a40e2abebd6f2", "shell": "a1e6c63a6d4c6ac2", "chrome": "1d76c188613d8d80", "main": "80df73b8500443c5"}),   # §0 78th: moved=['main'], +74 bytes
     ("measurements",    "/measurement/"):              ("f9e05bb4a913e6f8", 72046,
         {"head": "e07a8c7af120014b", "shell": "a1e6c63a6d4c6ac2", "chrome": "263eda7ebc35c9f7", "main": "689dfe3e81057d9f"}),   # table fit 30 Oct 2026: moved=['head', 'main'], +3109 bytes
     # ⚠ **RE-BASELINED 8 October 2026 — `main` ONLY, and for the OWNER ONLY**,

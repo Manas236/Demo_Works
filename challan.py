@@ -108,6 +108,7 @@ import boqpick as BP
 # challan's EXTRA items (17 Nov 2026, §0 seventy-fifth block). A leaf: it reads
 # the library out of STORE and never writes it.
 import extraitems as EX  # extra items + project link — the leaf (17 Nov 2026)
+import dcpo as DCPO      # a challan FROM a purchase order — the leaf (17 Nov 2026)
 import units as UN     # the shared unit list — the leaf (29 Oct 2026)
 import branding as B
 # "Is this challan billed, and by which RA bill?" (CLIENT_CHANGES.md §0,
@@ -483,9 +484,13 @@ def project_link_from(form) -> tuple:
     return EX.project_link_from(form)
 
 
-def parse_extras(form) -> tuple:
-    """`(rows, error)` — the extra items, by `extraitems.parse_extras()`."""
-    return EX.parse_extras(form)
+def parse_extras(form, with_ref: bool = False, allowed_refs=None) -> tuple:
+    """`(rows, error)` — the extra items, by `extraitems.parse_extras()`.
+
+    `with_ref` (17 Nov 2026): a challan raised from a purchase order carries
+    each row's order line (`po_key`) through an edit; `allowed_refs` is that
+    order's own keys."""
+    return EX.parse_extras(form, with_ref=with_ref, allowed_refs=allowed_refs)
 
 
 def _extra_row_html(desc="", qty="", unit="", pick="", spec=None) -> str:
@@ -493,9 +498,201 @@ def _extra_row_html(desc="", qty="", unit="", pick="", spec=None) -> str:
     return EX.extra_row_html(desc, qty, unit, pick, spec=spec)
 
 
-def _extras_section_html(stored: list = None, posted=None) -> str:
+def _extras_section_html(stored: list = None, posted=None,
+                         with_ref: bool = False) -> str:
     """The *Extra items* section — `extraitems.extras_section_html()`."""
-    return EX.extras_section_html(stored, posted, fmt_qty=BQ._fmt_qty)
+    return EX.extras_section_html(stored, posted, fmt_qty=BQ._fmt_qty,
+                                  with_ref=with_ref)
+
+
+# =============================================================================
+# A CHALLAN FROM A PURCHASE ORDER (17 November 2026, §0 seventy-eighth block)
+# =============================================================================
+#
+# ⚠ **This module may not import `purchase.py`, and `purchase.py` may not
+#   import this one** (`tests/test_import_directions.py`). The order's lines
+#   and what has already gone out against them are `dcpo.py`'s — a leaf that
+#   reads `STORE` directly and that both modules import. The route lives HERE
+#   because it writes a challan; the order's view links to it by `url_for`.
+#
+# ⚠ **What the challan carries.** `source_po_id` / `source_po_ref`, and on
+#   every row taken off the order a `po_key` (`dcpo.lines_of()`'s key), which is
+#   what the remainder is summed on — DERIVED, never stored. An order with a
+#   BOQ gives a BOQ challan (its `boq_id`, the BOQ lines through the ordinary
+#   picker so they are exactly a BOQ challan's lines, `line_id` kept); every
+#   other line, and every order line on an order with no BOQ, is an extra.
+#
+# ⚠ **Never the vendor as consignee.** The goods go to our site; the
+#   consignee opens at the order's own delivery address, else blank.
+#
+# ⚠ **`po_no` / `po_date` are NOT filled from the order.** They print on the
+#   challan and the client is still confirming which PO number belongs there,
+#   so they stay typed by hand exactly as on every other challan.
+
+PO_NOTHING_TICKED = ("No lines are ticked. A challan with nothing on it is not "
+                     "a document — tick what is going out, or cancel.")
+
+
+def _po_for_dc(po_id: str):
+    """`(po, error)` — the order, refused when it is gone or Cancelled."""
+    po = (STORE.get("purchases") or {}).get(str(po_id or "")[:64])
+    if not po:
+        return None, "That purchase order no longer exists."
+    if DCPO.is_withdrawn_po(po):
+        return None, (f"Purchase order {po.get('ref') or ''} is Cancelled, so "
+                      f"nothing is dispatched against it.")
+    return po, ""
+
+
+_PO_PICK_JS = """<script>
+/* Amber, never blocking: a quantity above what is left on the order. */
+function dcPoWarn(box) {
+  var row = box.closest('tr'), w = row ? row.querySelector('.po-over') : null;
+  var left = parseFloat(box.getAttribute('data-left')), n = parseFloat(box.value);
+  if (w) w.style.display = (!isNaN(n) && !isNaN(left) && n > left) ? 'inline' : 'none';
+}
+document.querySelectorAll('input[name="pl_qty"]').forEach(function (b) { dcPoWarn(b); });
+</script>"""
+
+
+def _po_picker_html(po: dict, data: dict) -> str:
+    """Every line of the order, ticked, at what is left of it. Rate-less."""
+    rows_src = DCPO.lines_of(po)
+    sent = DCPO.dispatched_by_key(po.get("id"))
+    on = data.get("_po_on")
+    qty_of = data.get("_po_qty") or {}
+    body = ""
+    for r in rows_src:
+        k = r["key"]
+        left = max(r["qty"] - sent.get(k, 0.0), 0.0)
+        qty = qty_of.get(k)
+        qty_txt = BQ._fmt_qty(left) if qty is None else str(qty)
+        checked = " checked" if (on is None or k in on) else ""
+        tag = ("BOQ line" if r["kind"] == "boq" else
+               "extra line" if r["kind"] == "extra" else "order line")
+        body += f"""
+          <tr>
+            <td style="width:2rem;"><input type="checkbox" name="pl_on" value="{P.esc(k)}"{checked}
+                 aria-label="Dispatch this line"/><input type="hidden" name="pl_key" value="{P.esc(k)}"/></td>
+            <td>{P.esc(r["item_no"]) or "&mdash;"}</td>
+            <td>{P.esc(" ".join(r["description"].split())[:160])}
+              <div style="font-size:.7rem;color:var(--muted);">{tag}</div></td>
+            <td>{P.esc(r["unit"])}</td>
+            <td style="text-align:right;">{BQ._fmt_qty(r["qty"])}</td>
+            <td style="text-align:right;">{BQ._fmt_qty(sent.get(k, 0.0))}</td>
+            <td style="text-align:right;"><input type="text" name="pl_qty" value="{P.esc(qty_txt)}"
+                 inputmode="decimal" data-left="{left:g}" oninput="dcPoWarn(this)"
+                 aria-label="Dispatch quantity" style="width:6rem;text-align:right;"/>
+              <span class="po-over" style="display:none;color:#9a6700;font-size:.75rem;">
+                above the {BQ._fmt_qty(left)} left &mdash; saved anyway</span></td>
+          </tr>"""
+    if not body:
+        body = ('<tr><td colspan="7" style="color:var(--muted);">This purchase '
+                'order has no lines.</td></tr>')
+    return f"""
+    <div class="form-section">
+      <div class="section-title">Lines going out &mdash; from {P.esc(po.get("ref"))}</div>
+      <p style="font-size:.82rem;color:var(--muted);margin:-.4rem 0 .9rem;">
+        Every line of the order is ticked, at what is <b>left</b> of it after the
+        challans already raised from this order. Untick what is not on this load.
+        A quantity above what is left is warned about and saved anyway.
+        <b>No rates</b> &mdash; a challan carries no money.
+      </p>
+      <input type="hidden" name="pl_present" value="1"/>
+      <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:.84rem;">
+        <thead><tr style="text-align:left;font-size:.7rem;text-transform:uppercase;color:var(--muted);">
+          <th></th><th>Item</th><th>Description</th><th>Unit</th>
+          <th style="text-align:right;">Ordered</th><th style="text-align:right;">Sent</th>
+          <th style="text-align:right;">Dispatch qty</th></tr></thead>
+        <tbody>{body}
+        </tbody>
+      </table>
+      </div>
+    </div>
+    """ + _PO_PICK_JS
+
+
+def _po_picks(form, po: dict) -> tuple:
+    """
+    `(boq_payload_json, other_rows, posted_on, posted_qty, error)` off the
+    order picker. A ticked BOQ line goes back through the ordinary picker (so
+    it is exactly a BOQ challan's line); every other ticked line is an extra.
+    """
+    keys = form.getlist("pl_key")
+    qtys = form.getlist("pl_qty")
+    on = set(form.getlist("pl_on"))
+    posted_qty = {k: (qtys[i] if i < len(qtys) else "") for i, k in enumerate(keys)}
+    by_key = {r["key"]: r for r in DCPO.lines_of(po)}
+    boq_lines, others = [], []
+    for k in keys:
+        if k not in on or k not in by_key:
+            continue
+        r = by_key[k]
+        raw = str(posted_qty.get(k) or "").strip()
+        try:
+            q = float(raw)
+        except ValueError:
+            return "", [], on, posted_qty, (f"Quantity for '{r['description'][:60]}' "
+                                            f"must be a number above 0.")
+        if not q > 0:
+            return "", [], on, posted_qty, (f"Quantity for '{r['description'][:60]}' "
+                                            f"must be above 0.")
+        if r["kind"] == "boq":
+            boq_lines.append({"line_id": r["line_id"], "qty": f"{q:g}"})
+        else:
+            row = {"line_id": None, "extra": True, "is_header": False,
+                   "item_no": r["item_no"], "description": r["description"][:500],
+                   "unit": r["unit"][:30], "qty": q, "source": "po", "po_key": k}
+            others.append(row)
+    if not boq_lines and not others:
+        return "", [], on, posted_qty, PO_NOTHING_TICKED
+    return json.dumps({"lines": boq_lines}), others, on, posted_qty, ""
+
+
+def over_po_remainder(dc: dict) -> list:
+    """
+    `[(description, sent_total, ordered)]` — the order's lines this challan
+    took past what was ordered, counting every challan raised from it.
+    Derived on every read; a warning, never a refusal.
+    """
+    pid = str((dc or {}).get("source_po_id") or "")
+    po = (STORE.get("purchases") or {}).get(pid)
+    if not po:
+        return []
+    mine = DCPO.qty_by_key(dc)
+    sent = DCPO.dispatched_by_key(pid)
+    return [(r["description"], sent.get(r["key"], 0.0), r["qty"])
+            for r in DCPO.lines_of(po)
+            if r["key"] in mine and sent.get(r["key"], 0.0) > r["qty"] + 1e-9]
+
+
+def _over_po_band(dc: dict) -> str:
+    """The amber band on `/dc/view` — screen only (the print never calls it)."""
+    rows = over_po_remainder(dc)
+    if not rows:
+        return ""
+    items = "".join(
+        f"<li>{P.esc(' '.join(d.split())[:90])}: {BQ._fmt_qty(t)} dispatched "
+        f"against {BQ._fmt_qty(o)} ordered</li>" for d, t, o in rows)
+    return f"""
+  <div class="dc-warn">
+    <b>More has gone out than purchase order {P.esc(dc.get("source_po_ref"))}
+    carries</b>, on {len(rows)} line{"" if len(rows) == 1 else "s"}. The
+    challan stands &mdash; this is a warning, not a refusal.
+    <ul>{items}</ul>
+  </div>"""
+
+
+def _keep_po_keys(items: list, before: list) -> list:
+    """An edit rebuilds BOQ rows from the schedule; put each `po_key` back."""
+    keys = {BQ._line_id(r.get("line_id")): r.get("po_key")
+            for r in before or [] if r.get("po_key") and BQ._line_id(r.get("line_id"))}
+    for r in items or []:
+        lid = BQ._line_id(r.get("line_id"))
+        if lid and lid in keys and not r.get("is_header"):
+            r["po_key"] = keys[lid]
+    return items
 
 
 def _project_select_html(selected: str = "") -> str:
@@ -691,7 +888,8 @@ def _consignee_block_form(data: dict) -> str:
 
 
 def _entry_form(boq: dict, data: dict, error: str = "",
-                dc: dict = None, banner_html: str = "", held=None) -> str:
+                dc: dict = None, banner_html: str = "", held=None,
+                po: dict = None) -> str:
     """
     The create form: the line picker, the consignee, and the dispatch fields.
 
@@ -720,13 +918,18 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     #   already billed on an RA bill (`held`), which is lock 3: its lines are
     #   the billed record. Excel imports onto the edit form too.
     lines_locked = editing and bool(held)
-    import_btn = ("" if lines_locked or standalone else
+    # `po` (17 Nov 2026, §0 seventy-eighth block): raised FROM a purchase
+    # order — the order's own lines replace the BOQ grid.
+    from_po = po is not None
+    import_btn = ("" if lines_locked or standalone or from_po else
                   f'\n      <a href="{url_for("docimport.upload_challan", boq=boq.get("id"), **({"dc": dc["id"]} if editing else {}))}" '
                   f'class="btn btn-ghost">&#128229; Import from Excel</a>')
     action = (url_for("challan.edit_dc", id=dc["id"]) if editing
+              else url_for("challan.create_dc", po=po.get("id")) if from_po
               else url_for("challan.create_dc", noboq=1) if standalone
               else url_for("challan.create_dc", boq=boq.get("id")))
-    back_url = (url_for("challan.list_dcs") if standalone
+    back_url = (url_for("purchase.view_purchase", id=po.get("id")) if from_po
+                else url_for("challan.list_dcs") if standalone
                 else url_for("boq.view_boq", id=boq.get("id")))
 
     # ⚠ **The number is typeable on CREATE and nowhere else.** `edit_dc()`
@@ -766,6 +969,8 @@ def _entry_form(boq: dict, data: dict, error: str = "",
                   f'<p class="field-hint">These lines are <b>locked</b>: this challan is '
                   f'billed on RA{P.esc(bill.get("ra_no") or "")} and its lines are the '
                   f'billed record (lock 3). Every other field stays editable.</p></div>')
+    elif from_po:
+        picker = _po_picker_html(po, data)
     elif not standalone:
         picker = BP.grid_html(
             boq,
@@ -790,7 +995,10 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     # are locked (billed): the stored extras then stay exactly as they are.
     extras_html = "" if lines_locked else _extras_section_html(
         [r for r in (dc or {}).get("items") or [] if is_extra(r)],
-        data.get("_xposted"))
+        data.get("_xposted"),
+        # A challan raised from an order keeps each row's order line through
+        # an edit (17 Nov 2026); every other challan renders as it always did.
+        with_ref=bool((dc or {}).get("source_po_id")))
     if standalone:
         intro_html = ("<b>No BOQ</b> &middot; a standalone challan. Its lines are "
                       "the items below; it is never billed on an RA bill.")
@@ -799,7 +1007,14 @@ def _entry_form(boq: dict, data: dict, error: str = "",
         intro_html = (f'Against <b>{boq_ref}</b> &middot; {P.esc(boq.get("project_name") or "")}\n'
                       f'    &middot; {P.esc(boq.get("account_name") or "")}')
         project_html = ""
-    back_html = ("" if standalone else
+    if from_po:
+        intro_html = (f'From purchase order <b>{P.esc(po.get("ref"))}</b> &middot; '
+                      + (f'against <b>{boq_ref}</b> &middot; {P.esc(boq.get("project_name") or "")}'
+                         if not standalone else
+                         '<b>no BOQ</b> &middot; its lines are extra items and it is '
+                         'never billed on an RA bill'))
+    back_html = (f'\n      <a href="{back_url}" class="btn btn-ghost">&#8592; {P.esc(po.get("ref"))}</a>'
+                 if from_po else "" if standalone else
                  f'\n      <a href="{back_url}" class="btn btn-ghost">&#8592; {boq_ref}</a>')
 
     return _page(f"""<!DOCTYPE html><html lang="en">
@@ -829,7 +1044,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     {dc_number_html}
   </div>
 
-  <form method="POST" action="{action}" onsubmit="return {"saveJSON()" if not (lines_locked or standalone) else "true"};">
+  <form method="POST" action="{action}" onsubmit="return {"saveJSON()" if not (lines_locked or standalone or from_po) else "true"};">
     <input type="hidden" name="dc_json" id="dc_json" value=""/>
 
     <div class="form-section">
@@ -1192,6 +1407,10 @@ def list_dcs():
     import auth as _AUTH
     new_btn = (f'\n      <a href="{url_for("challan.create_dc", noboq=1)}" '
                f'class="btn">&#43;&nbsp;New DC (no BOQ)</a>'
+               # "DC from PO" (17 Nov 2026, §0 seventy-eighth block) — to the
+               # purchase-order chooser, under the same permission.
+               f'\n      <a href="{url_for("challan.create_dc", frompo=1)}" '
+               f'class="btn">&#43;&nbsp;DC from PO</a>'
                if _AUTH.can_reach("challan.create_dc") else "")
 
     return _page(f"""<!DOCTYPE html><html lang="en">
@@ -1258,6 +1477,13 @@ def create_dc(imported: dict = None):
     # explicitly, so a stale or missing `?boq=` still refuses as it always did.
     if not boq_id and not imported and request.args.get("noboq"):
         return _create_standalone()
+    # A challan FROM a purchase order (17 Nov 2026, §0 seventy-eighth block):
+    # `?po=<id>` raises it, `?frompo=1` chooses the order. Same endpoint and
+    # permission (`dc.create`), so no route and no grant moved.
+    if not boq_id and not imported and request.args.get("po"):
+        return _create_from_po(request.args.get("po"))
+    if not boq_id and not imported and request.args.get("frompo"):
+        return _po_chooser()
     boq = (STORE.get("boqs") or {}).get(boq_id)
     if not boq:
         return redirect(url_for("boq.list_boqs",
@@ -1419,6 +1645,160 @@ def _create_standalone():
                             msg="Delivery challan raised.", type="success"))
 
 
+def _po_chooser():
+    """`/dc/create?frompo=1` — the purchase orders a challan can be raised from."""
+    rows = ""
+    pos = sorted((STORE.get("purchases") or {}).items(),
+                 key=lambda kv: str(kv[1].get("ref") or ""), reverse=True)
+    for pid, po in pos:
+        if DCPO.is_withdrawn_po(po):
+            continue
+        lines = DCPO.lines_of(po)
+        left = DCPO.remaining_by_key(po)
+        open_n = sum(1 for r in lines if left.get(r["key"], 0.0) > 0)
+        rows += f"""
+        <tr>
+          <td><b>{P.esc(po.get("ref"))}</b></td>
+          <td>{P.esc(po.get("date"))}</td>
+          <td>{P.esc(po.get("vendor_name")) or "&mdash;"}</td>
+          <td>{P.esc(po.get("boq_ref")) or "No BOQ"}</td>
+          <td>{P.esc(po.get("status"))}</td>
+          <td style="text-align:right;">{open_n} of {len(lines)}</td>
+          <td><a class="btn btn-ghost" href="{url_for('challan.create_dc', po=pid)}">Create DC</a></td>
+        </tr>"""
+    if not rows:
+        rows = ('<tr><td colspan="7" style="text-align:center;color:var(--muted);'
+                'padding:2rem;">No purchase order to despatch from.</td></tr>')
+    return _page(f"""<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>{B.page_title("DC from PO")}</title>
+  {B.HEAD_ICON}
+  {BASE_STYLES}{QUOTATION_STYLES}{CHALLAN_STYLES}
+</head>
+<body>
+{_nav()}
+<main>
+  <div class="page-top">
+    <h1>Challan from a <span>Purchase Order</span></h1>
+    <div style="display:flex;gap:.7rem;">
+      <a href="{url_for('challan.list_dcs')}" class="btn btn-ghost">All Challans</a>
+    </div>
+  </div>
+  {_flash()}
+  <p style="font-size:.85rem;color:var(--muted);margin-bottom:1rem;">
+    Choose the order the goods are going out against. Cancelled orders are not
+    listed. <i>Lines open</i> counts the order lines with quantity still to send.
+  </p>
+  <div style="overflow-x:auto;">
+  <table style="width:100%;border-collapse:collapse;font-size:.86rem;">
+    <thead><tr style="text-align:left;font-size:.72rem;text-transform:uppercase;color:var(--muted);">
+      <th>PO No.</th><th>Date</th><th>Supplier</th><th>BOQ</th><th>Status</th>
+      <th style="text-align:right;">Lines open</th><th></th></tr></thead>
+    <tbody>{rows}</tbody>
+  </table>
+  </div>
+  <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · delivery challan</p></footer>
+</main>
+</body></html>""")
+
+
+def _create_from_po(po_id: str):
+    """
+    `/dc/create?po=<id>` — a challan raised FROM a purchase order (17 Nov 2026,
+    §0 seventy-eighth block). The ordinary form, number, consignee, extras and
+    series; its lines are the order's, at what is left of each.
+    """
+    po, err = _po_for_dc(po_id)
+    if err:
+        return redirect(url_for("challan.list_dcs", msg=err, type="error"))
+    boq = DCPO.boq_of(po)
+    standalone = not boq
+
+    if request.method == "GET":
+        return _entry_form(boq, {
+            "date": _date.today().isoformat(),
+            "dispatch_mode": DEFAULT_DISPATCH_MODE,
+            # ⚠ NEVER the order's vendor: the goods go to our own site. The
+            #   order's delivery address when it has one, else blank.
+            "consignee_name": "",
+            "consignee_addr": str(po.get("delivery_to") or "")[:500],
+            "project_id": str(po.get("project_id") or "") if standalone else "",
+        }, po=po)
+
+    data, error = _validate(request.form)
+    payload, others, on, posted_qty, pick_err = _po_picks(request.form, po)
+    extras, x_error = parse_extras(request.form)
+    link = {}
+    if standalone:
+        link, link_error = project_link_from(request.form)
+        error = error or link_error
+    error = error or pick_err or x_error
+    items = []
+    if not error:
+        boq_items = []
+        if boq and json.loads(payload).get("lines"):
+            # The ordinary picker, so a BOQ line is exactly a BOQ challan's
+            # line (its specification header comes with it).
+            boq_items, error = picked_lines(payload, boq)
+            for r in boq_items:
+                if not r.get("is_header"):
+                    r["po_key"] = f"L:{BQ._line_id(r.get('line_id'))}"
+        items = list(boq_items) + list(others) + list(extras)
+    may_number = _may_set_number()
+    default_seq = int(SET.dc_series()["next_no"] or 1)
+    seq_used, num_err = DN.validate(DN.DC, "", data["doc_no_seq"],
+                                    default_seq, may_number)
+    error = error or num_err
+    resuming = FD.is_resume(request.form)
+    if error or resuming:
+        data["_po_on"] = on
+        data["_po_qty"] = posted_qty
+        data["_xposted"] = request.form
+        data["project_id"] = (request.form.get("project_id") or "").strip()[:64]
+        return _entry_form(boq, data, "" if resuming else error, po=po)
+
+    cid = new_id()
+    default_ref = SET.dc_ref_of(SET.dc_series())
+    rec = {
+        "id": cid,
+        "ref": _spend_ref(seq_used),
+        "date": data["date"],
+        "boq_id": boq.get("id") if boq else None,
+        "boq_ref": boq.get("ref", "") if boq else "",
+        **({"boq_rev_no": boq.get("rev_no", 0),
+            "project_name": boq.get("project_name", "")} if boq else link),
+        "site_location": boq.get("site_location", "") if boq else "",
+        "account_name": boq.get("account_name", "") if boq else "",
+        # Where it came from. Stored, never looked up, like `boq_ref`.
+        "source_po_id": po.get("id"),
+        "source_po_ref": str(po.get("ref") or ""),
+        **data["consignee"],
+        "dispatch_mode": data["dispatch_mode"],
+        "dispatch_to": data["dispatch_to"],
+        "po_no": data["po_no"],
+        "po_date": data["po_date"],
+        "notes": data["notes"],
+        "items": items,
+        "company_branch": "", "auth_signatory": "",
+    }
+    STORE.setdefault("delivery_challans", {})[cid] = rec
+    DN.record_override(rec, default_ref, rec["ref"], _actor_id())
+    msg = f"Delivery challan raised from {rec['source_po_ref']}."
+    over_po = over_po_remainder(rec)
+    if over_po:
+        msg += (f" {len(over_po)} line{'' if len(over_po) == 1 else 's'} now "
+                f"exceed{'s' if len(over_po) == 1 else ''} the order — see the "
+                f"note on the challan.")
+    over = over_dispatched(rec) if boq else []
+    if over:
+        msg += (f" {len(over)} line{'' if len(over) == 1 else 's'} now exceed"
+                f"{'s' if len(over) == 1 else ''} the schedule — see the note "
+                f"on the challan.")
+    return redirect(url_for("challan.view_dc", id=cid, msg=msg, type="success"))
+
+
 @challan_bp.route("/view/<id>")
 def view_dc(id: str):
     dc = (STORE.get("delivery_challans") or {}).get(id)
@@ -1432,6 +1812,11 @@ def view_dc(id: str):
     boq_btn = (f'\n    <a href="{url_for("boq.view_boq", id=dc.get("boq_id"))}" '
                f'class="btn btn-ghost">{P.esc(dc.get("boq_ref"))}</a>'
                if dc.get("boq_id") else "")
+    # The order it was raised from (17 Nov 2026) — screen only, and only when
+    # that order is still there.
+    if dc.get("source_po_id") in (STORE.get("purchases") or {}):
+        boq_btn += (f'\n    <a href="{url_for("purchase.view_purchase", id=dc.get("source_po_id"))}" '
+                    f'class="btn btn-ghost">PO {P.esc(dc.get("source_po_ref"))}</a>')
 
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -1458,7 +1843,7 @@ def view_dc(id: str):
 </div>
 
 {_flash()}{_billed_html(held)}
-{_over_dispatch_band(dc)}{EL.band(dc, "delivery challan")}
+{_over_dispatch_band(dc)}{_over_po_band(dc)}{EL.band(dc, "delivery challan")}
 
 <div class="doc-outer">
 {_document_html(dc, screen=True)}
@@ -1588,7 +1973,13 @@ def edit_dc(id: str, imported: dict = None):
     stored_extras = [r for r in dc.get("items") or [] if is_extra(r)]
     stored_boq = [r for r in dc.get("items") or [] if not is_extra(r)]
     read_extras = not held and bool(request.form.get("xi_present"))
-    extras, x_error = (parse_extras(request.form) if read_extras
+    # Raised from an order (17 Nov 2026): each row keeps its order line.
+    po_keys = ({r["key"] for r in DCPO.lines_of(
+                   (STORE.get("purchases") or {}).get(dc.get("source_po_id")) or {})}
+               | {str(r.get("po_key")) for r in stored_extras if r.get("po_key")}
+               if dc.get("source_po_id") else None)
+    extras, x_error = (parse_extras(request.form, with_ref=po_keys is not None,
+                                    allowed_refs=po_keys) if read_extras
                        else (stored_extras, ""))
     error = error or x_error
     link = {}
@@ -1641,6 +2032,8 @@ def edit_dc(id: str, imported: dict = None):
         dc.update(link)
     changes = EL.diff(before, dc, DC_EDIT_FIELDS)
     if items is not None:
+        if dc.get("source_po_id"):
+            _keep_po_keys(items, before_items)
         dc["items"] = items
         changes += EL.line_diff([dict(r, name=r.get("description"), price="")
                                  for r in before_items],

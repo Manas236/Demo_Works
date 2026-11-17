@@ -825,10 +825,16 @@ TI_BLOCKS = {"head":       "7175047fae9ddfae",   # was 6715688604fc56b4 (§0 59t
 #     adds nothing here. `items` below was re-measured at the same time: the
 #     base itself renders efbfbd2531459c06 (the stored d6563a7e3202057d was
 #     already stale, unseen because blocks are read only when the whole moves).
-PO_WHOLE, PO_LEN = "7dd11fced885267f", 106725   # was a192f10746beb57c / 105375 (logo option A, 14 Nov 2026), was ef8ad4babd4ecbde / 104771 (logo top-aligned, 8 Nov 2026), was 249b2e228c4df02c / 104761, was 576cc3e7a9ddba40 / 102421
+# ⚠ RE-BASELINED 17 November 2026 — `head` ONLY, +98 bytes (§0 seventy-eighth
+#   block): the screen-only "Create DC" button in the action bar. Measured in
+#   this fixture before the baseline was touched: the page with that one
+#   anchor removed hashes to the OLD 7dd11fced885267f / 106725 exactly. Every
+#   printed block (letterhead, foot-strip, doc-box, party, items, signature)
+#   is byte-identical — the order's PRINT did not move. Old head f2506d2ff61a54c6.
+PO_WHOLE, PO_LEN = "8596ca1c1c23d4d1", 106823   # was 7dd11fced885267f / 106725 (§0 78th, Create DC), was a192f10746beb57c / 105375 (logo option A, 14 Nov 2026), was ef8ad4babd4ecbde / 104771 (logo top-aligned, 8 Nov 2026), was 249b2e228c4df02c / 104761, was 576cc3e7a9ddba40 / 102421
                                 #   (§0 59th A1, 29 Oct 2026), was ae90e14f6bb98530 /
                                 #   100193 (SF mark 1.5x)
-PO_BLOCKS = {"head":       "f2506d2ff61a54c6",   # was 6a1a651b90ded6e8 (Edit button, 2 Nov 2026), was d5dcf006e5a8f876 (§0 59th A1),   # was bf2fc2b883a29ca6 (page edge),
+PO_BLOCKS = {"head":       "4ebf4dfaf95ccbb6",   # was f2506d2ff61a54c6 (§0 78th, Create DC), was 6a1a651b90ded6e8 (Edit button, 2 Nov 2026), was d5dcf006e5a8f876 (§0 59th A1),   # was bf2fc2b883a29ca6 (page edge),
                                                  # was b0183c538998f277,
                                                  # was e6bade8d45a63f6a,
                                                  # was 09c8c69b2580ee92,

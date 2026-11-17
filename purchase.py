@@ -85,6 +85,7 @@ import branding as B
 import cascade
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import lineimage as LI   # pictures beside a line — the leaf (21 Oct 2026)
+import dcpo as DCPO      # challans raised FROM an order — the leaf (17 Nov 2026)
 import pipeline as P
 import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
@@ -5766,6 +5767,17 @@ def view_purchase(id: str):
         pics_btn = (f'\n    <a href="{url_for("purchase.pictures", id=id)}" '
                     f'class="btn btn-ghost">&#128247;&nbsp;Pictures</a>')
 
+    # ── Create DC (17 Nov 2026, §0 seventy-eighth block) ─────────────────
+    # A link to `challan.py`'s route by `url_for` — this module may not import
+    # it. Not on a Cancelled order (the route refuses one too), and only for a
+    # role the gate admits. The newline lives inside the string, so an order
+    # that offers no challan renders the bar byte-for-byte as before.
+    dc_btn = ""
+    if not DCPO.is_withdrawn_po(po) and _AUTH.can_reach("challan.create_dc"):
+        dc_btn = (f'\n    <a href="{url_for("challan.create_dc", po=id)}" '
+                  f'class="btn btn-ghost">&#128666;&nbsp;Create DC</a>')
+    dispatched_html = _dispatched_html(po)
+
     # ── HSN (29 October 2026, §0 fifty-ninth block, A1) ──────────────────
     # The note only; the box that answers it has been on the reprice form
     # since 1fdc09e, so this points there rather than adding a second page.
@@ -5831,13 +5843,13 @@ def view_purchase(id: str):
     {_status_badge(po.get('status'))}
   </h1>
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
-    <a href="{url_for("purchase.list_purchases")}" class="btn btn-ghost">All Purchase Orders</a>{reprice_btn}{pics_btn}{del_po}
+    <a href="{url_for("purchase.list_purchases")}" class="btn btn-ghost">All Purchase Orders</a>{reprice_btn}{pics_btn}{del_po}{dc_btn}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
 
 {_alert(request.args.get("msg"), request.args.get("type", "success"))}
-{_EL.band(po, "purchase order")}{hsn_note}{panel}
+{_EL.band(po, "purchase order")}{hsn_note}{panel}{dispatched_html}
 
 <div class="doc-outer">
 <div class="quotation-doc">
@@ -5874,6 +5886,54 @@ def view_purchase(id: str):
 </main>
 </body></html>"""
     return _page(template)
+
+
+def _dispatched_html(po: dict) -> str:
+    """
+    *Dispatched on DCs* — the challans raised from this order, per line,
+    against what was ordered (17 Nov 2026, §0 seventy-eighth block).
+
+    ⚠ **Screen only**: it sits above `.doc-outer`, which `PRINT_EDGE_CSS`
+      withholds from paper, so the order's print does not change. Empty when
+      no challan has been raised from the order, so such an order's page is
+      byte-for-byte what it was. The figures are `dcpo.py`'s — summed on
+      every read, never stored.
+    """
+    dcs = DCPO.challans_of(po.get("id"))
+    if not dcs:
+        return ""
+    lines = DCPO.lines_of(po)
+    sent = DCPO.dispatched_by_key(po.get("id"))
+    body = ""
+    for cid, dc in dcs:
+        mine = DCPO.qty_by_key(dc)
+        for r in lines:
+            if r["key"] not in mine:
+                continue
+            body += (f'<tr><td><a href="{url_for("challan.view_dc", id=cid)}">'
+                     f'{P.esc(dc.get("ref"))}</a></td><td>{P.esc(dc.get("date"))}</td>'
+                     f'<td>{P.esc(" ".join(r["description"].split())[:90])}</td>'
+                     f'<td style="text-align:right;">{_fmt_qty(mine[r["key"]])}</td>'
+                     f'<td style="text-align:right;">{_fmt_qty(r["qty"])}</td></tr>')
+    totals = "".join(
+        f'<tr style="font-weight:600;"><td colspan="2">Total sent</td>'
+        f'<td>{P.esc(" ".join(r["description"].split())[:90])}</td>'
+        f'<td style="text-align:right;{"color:#b45309;" if sent.get(r["key"], 0.0) > r["qty"] + 1e-9 else ""}">'
+        f'{_fmt_qty(sent.get(r["key"], 0.0))}</td>'
+        f'<td style="text-align:right;">{_fmt_qty(r["qty"])}</td></tr>'
+        for r in lines if r["key"] in sent)
+    return f"""
+<div class="po-panel">
+  <h2>Dispatched on DCs</h2>
+  <div style="overflow-x:auto;">
+  <table style="width:100%;border-collapse:collapse;font-size:.84rem;">
+    <thead><tr style="text-align:left;font-size:.7rem;text-transform:uppercase;">
+      <th>DC No.</th><th>Date</th><th>Line</th>
+      <th style="text-align:right;">Qty sent</th><th style="text-align:right;">Ordered</th></tr></thead>
+    <tbody>{body}{totals}</tbody>
+  </table>
+  </div>
+</div>"""
 
 
 @purchase_bp.route("/delete/<id>", methods=["GET", "POST"])

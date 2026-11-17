@@ -426,6 +426,7 @@ Consequences you must respect when editing:
 | [specpick.py](specpick.py) | 580 | **The spec-library picker for a quotation** (12 September 2026) — the embed, the POST rebuild, the GST guard and the eight page seams `quotation.create_quotation()` fills while the catalogue is hidden. A **leaf**: imports `store` and `pipeline` at module level and `spec.ensure_demo_specs` inside `ensure_seeded()` only; never imports `quotation.py` back (the quantity formatter is passed in), and never reads the switch — `quotation.py` decides, this module answers what a library pick is. ⚠ **SUPPLY ONLY**: no installation leg on a quotation, a posted `leg` other than `supply` is refused by line, the GST guard compares `supply_gst_rate` only. Measured on the seed: 5 of 56 clauses carry a blank `supply_hsn`, 22 have no supply rate on any variant (36 of 86 variants) — every one is still offered, with an empty price box. |
 | [buypick.py](buypick.py) | 459 | **The purchase order's item picker** (31 October 2026, CLIENT_CHANGES.md §0 sixtieth block) — the Specification library (while the catalogue is hidden) and the BOQ items (always) as `<optgroup>`s on `/purchase/create`'s rows, the cost-rate and make prefills, the search box script, and `resolve()`, which re-reads a pick's identity at POST. A **leaf**: `store` + `pipeline` at module level, `spec` and `boq` in function bodies only. §5 `/purchase`, *The item picker*; §7 gap 38. |
 | [extraitems.py](extraitems.py) | 332 | **Extra items on a document, and the optional project link** (17 November 2026, CLIENT_CHANGES.md §0 seventy-sixth block) — the repeater lifted out of `challan.py` at its second consumer, the Product Inquiry (`po_draft.py` may not import `challan.py`). `parse_extras()`, `extras_section_html()`, `extra_row_html()`, `is_extra()`, `project_link_from()`, `project_select_html()`. Defaults are the challan's own strings (its pages are byte-identical); the inquiry adds Make, Pcs and a picture by flag. A **leaf**: `store`, `pipeline`, `buypick`, `units`, `lineimage`. §5 `/po`, `/dc`. |
+| [dcpo.py](dcpo.py) | 147 | **A delivery challan raised FROM a purchase order — the shared reads** (17 November 2026, CLIENT_CHANGES.md §0 seventy-eighth block). `lines_of(po)` keys every order line (`L:<line_id>` for a line on the order's BOQ, `I:<n>` for another priced line, `X:<n>` for an extra line); `dispatched_by_key()` / `remaining_by_key()` SUM `qty` per `po_key` over the challans whose `source_po_id` is the order — derived, never stored. A **leaf** (`store` only) because `challan.py` and `purchase.py` both need it and may not import each other. §5 `/dc`. |
 | [proforma.py](proforma.py) | 1322 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 2711 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. Also the **only** module that can raise a real PO from a BOQ or convert a priced draft into one — see §2f. |
@@ -12442,6 +12443,40 @@ both modules import.
 | `/dc/print/<id>` | **unchanged** — no mark, no band; the printed note says what left the yard, not what was billed |
 
 ---
+
+
+#### A challan FROM a purchase order (17 November 2026)
+
+CLIENT_CHANGES.md §0 **seventy-eighth** block (prod hotfix 3).
+
+| | |
+|---|---|
+| entry | *Create DC* on `/purchase/view/<id>` (not on a Cancelled order, and only when `can_reach("challan.create_dc")`); *+ DC from PO* on `/dc/` → `/dc/create?frompo=1`, the order chooser (Cancelled orders not listed) |
+| route | `GET,POST /dc/create?po=<id>` — the existing `create_dc`, dispatching to `_create_from_po()`. **No new endpoint**, `dc.create`, no access-matrix change. A Cancelled or missing order is refused at the route. |
+| picker | every order line (priced lines and extra lines) ticked, at what is LEFT (`dcpo.remaining_by_key()`); qty editable; above the remainder an amber note on the form and `_over_po_band()` on `/dc/view` — warned, saved; nothing ticked refused; no rate anywhere |
+| record | `source_po_id`, `source_po_ref`; each row taken off the order carries `po_key` |
+| BOQ order | the challan takes the order's `boq_id`; a line whose `line_id` is ON that BOQ goes through the ordinary `picked_lines()` (header included), so it is exactly a BOQ challan's line and `ra.challans_on_chain()` / `ra.dispatched_in()` count it unchanged |
+| no-BOQ order | (or its BOQ is gone) a no-BOQ challan: every line an extra (`line_id` None, `extra` True, `source: "po"`), project from the order's `project_id`, editable |
+| always | an order's extra lines, and any priced line not on its BOQ, are extras; extras addable on top; same series, typed number, copy labels, print |
+
+* **Imports.** `challan.py` may not import `purchase.py` and vice versa, so
+  both read through the new leaf `dcpo.py` (STORE directly). The route lives
+  in `challan.py` because it writes a challan; the order's view links to it by
+  `url_for` and draws *Dispatched on DCs* (`purchase._dispatched_html()`,
+  above `.doc-outer`, screen only, empty when no challan exists).
+* **Consignee never the vendor**: it opens at the order's `delivery_to`, else
+  blank. **`po_no` / `po_date` are not filled from the order** — they print,
+  and the client is confirming which number belongs there.
+* **Through an edit** a row keeps its `po_key`: BOQ rows re-attached by
+  `line_id` (`_keep_po_keys()`), extras through a hidden `xi_ref` per row
+  (`extraitems` `with_ref`, kept only when it is one of the order's keys).
+* A challan has **no cancelled state**; a deleted one frees its quantity (it
+  is not in the store). `dcpo` also skips a record marked `status:
+  "cancelled"`. `I:<n>` / `X:<n>` are positions on the order, so a line
+  removed from an order after a challan was raised against it shifts them.
+* Goldens: DC print byte-identical; `/dc/` register `main` +74 bytes and the
+  pinned `/purchase/view` `head` +98 bytes (the two buttons), each proved by
+  stripping back to the old digest; every printed block of the order unchanged.
 
 ### `/measurement` — Measurement Sheets · [measurement.py](measurement.py) · **CC-2 C2**
 
