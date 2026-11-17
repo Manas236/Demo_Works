@@ -1287,9 +1287,22 @@ GOLD_PICK_BOQ = "gold-pick"
 #   Part 3): the product inquiry's create form gained its "No." field (the
 #   docnum control and its stylesheet) at the top of the form. `intro` ONLY,
 #   +1,100 bytes; the picker's own blocks are byte-identical.
-PICK_WHOLE = "180ea2bc312f66a8"   # was 62c80012381412e0 (§0 64th, number field), was 848964109c809bae (§0 64th, Resume), was cc3d3280b73f3e0e (§0 59th B1)
-PICK_LEN = 87589                  # was 86489 (§0 64th, number field), was 82756 (§0 64th, Resume)
-PICK_BLOCKS = {"head":    "7c5d2bf9720e4cd8",   # was 68af1da58d9e51a7 (§0 64th), was 2fc16fd060a023cf,
+# ⚠ **RE-BASELINED 17 November 2026 — EXTRA ITEMS on the create form**
+#   (CLIENT_CHANGES.md §0 **seventy-sixth** block). `head` and `js` moved;
+#   the picker's own seven blocks — `intro`, `vendor`, `details`, `lines`,
+#   `tools`, `rows`, `payload` — are byte-identical. MEASURED before the
+#   baseline was touched, in this fixture: with `po_draft._extras_html`
+#   stubbed to "" (and the spec library emptied again) the page hashes to the
+#   OLD 180ea2bc312f66a8 / 87589 exactly. The two moves are (1) `js`: the
+#   extras section, 80 lines inserted after the picker, nothing removed; and
+#   (2) `head`: ONE rail line, *Spec Library* 0 -> 56 — this fixture starts
+#   with an empty library and the section seeds the GENUINE DEFAULT library
+#   (`buypick.ensure_seeded()`), exactly as `/dc/create`'s extras section
+#   already does. Old values: whole 180ea2bc312f66a8 / 87589, head
+#   7c5d2bf9720e4cd8, js a22d28750cbdb86b.
+PICK_WHOLE = "78c4ef469b0ad63c"   # was 180ea2bc312f66a8 (§0 76th, extras), was 62c80012381412e0 (§0 64th, number field), was 848964109c809bae (§0 64th, Resume), was cc3d3280b73f3e0e (§0 59th B1)
+PICK_LEN = 147316                 # was 87589 (§0 76th, extras), was 86489 (§0 64th, number field), was 82756 (§0 64th, Resume)
+PICK_BLOCKS = {"head":    "3eb34b3cea2440e0",   # was 7c5d2bf9720e4cd8 (§0 76th, rail Spec Library count), was 68af1da58d9e51a7 (§0 64th), was 2fc16fd060a023cf,
                                                 # was b07f3fb758299248,
                                                 # was af77ecc07bfca6ff,
                                                 # was 8bf28275fa127606,
@@ -1302,7 +1315,7 @@ PICK_BLOCKS = {"head":    "7c5d2bf9720e4cd8",   # was 68af1da58d9e51a7 (§0 64th
                "tools":   "bbf296057d6fb154",   # was 76ba5972ff18f235 (Make)
                "rows":    "9987f464a6ef64cd",   # was a57b4602a006fa6f (Make)
                "payload": "0b433e5e3f3e5705",
-               "js":      "a22d28750cbdb86b"}   # was f86b9c1063249df0 (§0 64th, Resume), was 8bbde42b5e5f5415 (§0 59th B1)   # was f1bae1908e487e97 (Make)
+               "js":      "ec9514ca7232aa25"}   # was a22d28750cbdb86b (§0 76th, extras section)   # was f86b9c1063249df0 (§0 64th, Resume), was 8bbde42b5e5f5415 (§0 59th B1)   # was f1bae1908e487e97 (Make)
 
 
 def test_the_boq_line_picker_is_unchanged(client, golden_picker):

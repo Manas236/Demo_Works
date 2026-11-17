@@ -3360,7 +3360,7 @@ def from_boq(boq_id: str):
         onsubmit="saveJSON()")
 
 
-def _upstream_repeaters(f, is_post: bool) -> tuple:
+def _upstream_repeaters(f, is_post: bool, extra_prefill: list = None) -> tuple:
     """
     `(extra_section, charge_section)` for the two upstream forms.
 
@@ -3374,7 +3374,10 @@ def _upstream_repeaters(f, is_post: bool) -> tuple:
         return (_extra_section_html([], posted=f),
                 _charge_section_html([], f.getlist("charge_label"),
                                      f.getlist("charge_amount"), f))
-    return _extra_section_html([]), _charge_section_html([])
+    # `extra_prefill` (17 Nov 2026): a product inquiry's extra items, carried
+    # into this order's extra lines on the GET. `None` / `[]` is the blank
+    # repeater every other caller has always had.
+    return _extra_section_html(extra_prefill or []), _charge_section_html([])
 
 
 def _replay_picked(raw: str) -> tuple:
@@ -3441,10 +3444,23 @@ def from_draft(draft_id: str):
         base_of[lid] = None if base is None else float(base)
 
     project_id, project_name = _project_of_boq(boq)
+    # An inquiry raised WITHOUT a BOQ (17 Nov 2026, §0 seventy-sixth block)
+    # names its own project, snapshotted; the order inherits it from there.
+    if not draft.get("boq_id") and draft.get("project_id"):
+        own = str(draft.get("project_id") or "")
+        if _project_name_of(own):
+            project_id, project_name = own, _project_name_of(own)
 
     # Only rows with something to buy. A draft carries its specification headers
     # for the supplier to read, and those come across unchanged.
-    rows = list(draft.get("items") or [])
+    # ⚠ **An EXTRA item (17 Nov 2026) is not one of these rows.** It has no
+    #   `line_id` — every posted value below is keyed on one, so two extras
+    #   would land on the same key — and it is on no schedule. It is carried
+    #   into this order's EXTRA-LINE repeater instead (`_draft_extra_prefill()`),
+    #   prefilled on the GET and saved by `_parse_extra_lines()` like any part
+    #   typed there. The BOQ-line path below is exactly what it was.
+    extras_of_draft = [r for r in draft.get("items") or [] if _is_draft_extra(r)]
+    rows = [r for r in draft.get("items") or [] if not _is_draft_extra(r)]
 
     is_post = request.method == "POST"
     f = request.form
@@ -3537,13 +3553,19 @@ def from_draft(draft_id: str):
                     # ⚠ Validated against the DRAFT's row, so the only
                     #   pictures this form can attach are that item's own.
                     LI.apply_choice(items[-1], posted_image[lid], row)
-            if not error and not any(not r["is_header"] for r in items):
+            if (not error and not any(not r["is_header"] for r in items)
+                    and not extras_of_draft):
                 error = "This product inquiry has no lines to order."
 
         # The two repeaters, after the draft's own lines — `from_boq()`'s
         # order, which is `create_purchase()`'s.
         extra_lines, extra_err = ([], "") if error else _parse_extra_lines(f)
         error = error or extra_err
+        # An inquiry whose only lines were extras (17 Nov 2026) must still
+        # order something: its extras arrive in the repeater just parsed.
+        if (not error and extras_of_draft and not extra_lines
+                and not any(not r["is_header"] for r in items)):
+            error = "This product inquiry has no lines to order."
         charges, charge_err = ([], "") if error else _parse_charges(f)
         error = error or charge_err
 
@@ -3626,6 +3648,8 @@ def from_draft(draft_id: str):
 
     rate_note = ("Rates open at the schedule's supply base rate and are yours to "
                  "edit." if boq else
+                 "This inquiry was raised without a bill of quantities; its items "
+                 "are in <b>Extra lines</b> below." if not draft.get("boq_id") else
                  "The bill of quantities behind this draft is no longer in the "
                  "system, so there is no base rate to open with — every rate has "
                  "to be typed.")
@@ -3643,7 +3667,7 @@ def from_draft(draft_id: str):
           <span style="text-align:right;">Qty</span>
           <span style="text-align:right;">Rate (&#8377;)</span>
         </div>
-        {lines_html or '<p style="font-size:.85rem;color:var(--muted);">This product inquiry carries no lines.</p>'}
+        {lines_html or ('<p style="font-size:.85rem;color:var(--muted);">No BOQ lines &mdash; this inquiry&rsquo;s items are in <b>Extra lines</b> below.</p>' if extras_of_draft else '<p style="font-size:.85rem;color:var(--muted);">This product inquiry carries no lines.</p>')}
       </div>"""
 
     # ── The amber band, on a second conversion ────────────────────────────
@@ -3673,7 +3697,8 @@ def from_draft(draft_id: str):
                       f'vendor from it, so add them first or pick whoever is '
                       f'actually supplying.')
 
-    extra_section, charge_section = _upstream_repeaters(f, is_post)
+    extra_section, charge_section = _upstream_repeaters(
+        f, is_post, extra_prefill=_draft_extra_prefill(extras_of_draft))
 
     back_html = (f'<a href="{url_for("po_draft.view_po", id=draft_id)}" '
                  f'class="btn btn-ghost">&#8592; {P.esc(draft.get("ref"))}</a>')
@@ -3691,6 +3716,49 @@ def from_draft(draft_id: str):
         charge_section=charge_section,
         data=data,
         error=error)
+
+
+def _is_draft_extra(row) -> bool:
+    """
+    An inquiry's EXTRA item (17 Nov 2026) — `extra` True and no `line_id`.
+    The test `po_draft.is_extra()` makes, written here because this module may
+    never import `po_draft.py`.
+    """
+    return bool(isinstance(row, dict) and row.get("extra")
+                and not str(row.get("line_id") or "").strip())
+
+
+def _draft_extra_prefill(extras: list) -> list:
+    """
+    An inquiry's extra items as this order's EXTRA LINES, for the GET
+    (17 Nov 2026, §0 seventy-sixth block).
+
+    The rate opens at the Specification library's **supply base rate** for a
+    line picked from it — re-read NOW, so a library edited since the inquiry
+    shows today's figure — and **blank** otherwise, for the operator to type.
+    The library is read, never written. The make, the unit, the quantity and
+    the picture are the inquiry's own; the HSN is the library clause's.
+    """
+    out = []
+    specs = STORE.get("specs") or {}
+    for r in extras or []:
+        rate, hsn = None, ""
+        spec = specs.get(str(r.get("src_spec_id") or ""))
+        if spec:
+            hsn = str(spec.get("supply_hsn") or "")
+            try:
+                variant = (spec.get("variants") or [])[int(r.get("src_vidx"))]
+                base = variant.get("default_supply_base_rate")
+                rate = None if base in (None, "") else float(base)
+            except (TypeError, ValueError, IndexError):
+                rate = None
+        out.append({"description": str(r.get("description") or ""),
+                    "unit": str(r.get("unit") or ""),
+                    "qty": float(r.get("qty") or 0.0),
+                    "rate": rate, "hsn": hsn,
+                    **LI.carry(r),
+                    **({"make": r["make"]} if r.get("make") else {})})
+    return out
 
 
 def _draft_rate_of(row: dict, base_of: dict, blank_when_unknown: bool = False):

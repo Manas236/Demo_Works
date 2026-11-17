@@ -425,6 +425,7 @@ Consequences you must respect when editing:
 | [docnum.py](docnum.py) | 511 | **The MANUAL document number, forward only — a LEAF** (27 October 2026, CLIENT_CHANGES.md §0 fifty-fourth block, item A). Holds the rule *accepted ⟺ entered > the highest ordinal EVER used in this scope, or entered == the prefilled default*, the **high-water ledger** that makes "ever" outlive a deleted record (`STORE["settings"]["document_number_highwater"]`, raised by `note_used()` on every save), the cross-collection tax-invoice scan, and `number_field()` — the one control all four create forms render, prefix and FY as un-postable text, only the tail typeable. ⚠ **It exists because `ra.py` may never import `invoice.py`**: a TI number can be in `invoices.ref`, `ra_bills.tax_invoice_ref` or `merged_ras.tax_invoice_ref`, and a check written inside either module would defeat that prohibition through the basement — `docsheet.py`'s and `series.py`'s argument, a third time. Imports `store` and `pipeline` and nothing else from the app; **not `auth`** — the four document modules answer the permission themselves and pass the boolean in. ⚠ **It does not feed the AUTOMATIC minter**: `series.next_seq()` is untouched and every automatic number is what it always was, which is why no golden moved (§7 gap 83). ⚠ **No lock**, exactly as `series.py`. |
 | [specpick.py](specpick.py) | 580 | **The spec-library picker for a quotation** (12 September 2026) — the embed, the POST rebuild, the GST guard and the eight page seams `quotation.create_quotation()` fills while the catalogue is hidden. A **leaf**: imports `store` and `pipeline` at module level and `spec.ensure_demo_specs` inside `ensure_seeded()` only; never imports `quotation.py` back (the quantity formatter is passed in), and never reads the switch — `quotation.py` decides, this module answers what a library pick is. ⚠ **SUPPLY ONLY**: no installation leg on a quotation, a posted `leg` other than `supply` is refused by line, the GST guard compares `supply_gst_rate` only. Measured on the seed: 5 of 56 clauses carry a blank `supply_hsn`, 22 have no supply rate on any variant (36 of 86 variants) — every one is still offered, with an empty price box. |
 | [buypick.py](buypick.py) | 459 | **The purchase order's item picker** (31 October 2026, CLIENT_CHANGES.md §0 sixtieth block) — the Specification library (while the catalogue is hidden) and the BOQ items (always) as `<optgroup>`s on `/purchase/create`'s rows, the cost-rate and make prefills, the search box script, and `resolve()`, which re-reads a pick's identity at POST. A **leaf**: `store` + `pipeline` at module level, `spec` and `boq` in function bodies only. §5 `/purchase`, *The item picker*; §7 gap 38. |
+| [extraitems.py](extraitems.py) | 332 | **Extra items on a document, and the optional project link** (17 November 2026, CLIENT_CHANGES.md §0 seventy-sixth block) — the repeater lifted out of `challan.py` at its second consumer, the Product Inquiry (`po_draft.py` may not import `challan.py`). `parse_extras()`, `extras_section_html()`, `extra_row_html()`, `is_extra()`, `project_link_from()`, `project_select_html()`. Defaults are the challan's own strings (its pages are byte-identical); the inquiry adds Make, Pcs and a picture by flag. A **leaf**: `store`, `pipeline`, `buypick`, `units`, `lineimage`. §5 `/po`, `/dc`. |
 | [proforma.py](proforma.py) | 1322 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
 | [invoice.py](invoice.py) | 1300 | GST tax invoice, derived from a proforma. Rule 46 document; same sheet again. |
 | [purchase.py](purchase.py) | 2711 | **Buy side.** Purchase orders on vendors. Separate pipeline; never touches PI/TI. Also the **only** module that can raise a real PO from a BOQ or convert a priced draft into one — see §2f. |
@@ -11652,6 +11653,58 @@ starts"*. That reasoning was right about a **converted** draft and too strong
 about an unconverted one, which has gone to nobody. The lock is where it now
 lives. `tests/test_po_make.py::test_make_is_edited_on_the_draft_po_edit_form`
 was rewritten for the new field names with its old body kept verbatim.
+
+#### Without a BOQ, and EXTRA items on any inquiry (17 November 2026)
+
+CLIENT_CHANGES.md §0 **seventy-sixth** block (prod hotfix 2), the inquiry
+twin of the delivery challan's seventy-fifth.
+
+| | |
+|---|---|
+| route | `GET,POST /po/create?noboq=1` — the existing `create_po`, dispatching to `_create_standalone()`; **no new endpoint**, so no access-matrix change. A missing or stale `?boq=` still redirects as before. |
+| button | *+ New Product Inquiry (no BOQ)* on `/po/`, drawn only when `can_reach("po_draft.create_po")` |
+| record | `boq_id: None`, `boq_ref: ""`, optional `project_id` + snapshotted `project_name` (`extraitems.project_link_from()`), same supplier picker + free text, **same `SF/DPO` series and counter** |
+| extra item | `{line_id: None, extra: True, is_header: False, item_no: "", description, unit, qty (> 0), pcs, source: "spec"\|"typed", [make], [src_spec_id, src_vidx], [image, image_name]}` — after the BOQ lines; description capped at **200** (the PO extra line's cap) |
+
+* **The repeater is `extraitems.py`, a new LEAF** lifted out of `challan.py`
+  at this second consumer — `po_draft.py` may not import `challan.py`.
+  `challan.py` keeps its names as wrappers and every `/dc` page renders
+  byte-identically. The inquiry passes `pfx="dpo"` and asks for the Make, Pcs
+  and picture cells (`xi_make`, `xi_pcs`, `xi_image`, one per row, read by
+  position). The Specification library is read through `buypick.resolve()`
+  and **never written**.
+* **On create and on edit.** A BOQ inquiry may tick no BOQ line when it has
+  an extra (it needs one line overall). On edit the full line editor lists
+  the non-extra rows and the extras have their own section; extras are re-read
+  only when the form drew them (`xi_present`), so a stale tab keeps them —
+  the challan's rule. `parse_items(allow_empty=True)` lets the editor empty
+  when an extra remains.
+* **Pictures.** An extra row offers a select over its item's library on the
+  edit form; a NEW picture is uploaded on `/po/pictures/<id>`, which already
+  addresses every line by position (`it:<n>`) and needed no change.
+* **Print.** `_document_html()` is untouched and prints every stored row, so
+  extras print after the BOQ lines in the same columns, rate-less; a no-BOQ
+  inquiry prints a blank *Against BOQ* row (`_meta()`'s house rule).
+  `/po/print`'s golden is byte-identical.
+* **Convert to Purchase Order.** `purchase.from_draft()` takes the extras
+  OUT of the BOQ-line path (which keys every posted value on `line_id`, so
+  two extras would collide on `""`) and prefills them into the order's
+  **extra-line repeater** on the GET (`purchase._draft_extra_prefill()`): the
+  rate opens at the library variant's `default_supply_base_rate`, re-read
+  now, else blank; the HSN is the clause's `supply_hsn`. They are saved by
+  `_parse_extra_lines()` into `purchases.extra_lines`. BOQ lines convert
+  exactly as before. A no-BOQ inquiry's order inherits the inquiry's own
+  `project_id`. The lock rule is unchanged (since 2 Nov a converted inquiry
+  is editable, logged).
+* **Project page.** `projectview`'s `_raised_add(..., own_project=True)` lists
+  a no-BOQ inquiry on the project its `project_id` names. `pnl.py` is
+  untouched — an inquiry carries no money (`tests/test_po_standalone.py`
+  asserts `project_pnl()` does not move).
+* Goldens: `/po/` register `main` +91 bytes (the button) and the pinned
+  `/po/create` form re-baselined with the strip-and-hash proof — `js` is the
+  extras section, `head` is one rail line (*Spec Library* 0 -> 56: the section
+  calls `buypick.ensure_seeded()`, as `/dc/create`'s already does, and that
+  fixture starts with an empty library). `/po/print` unchanged.
 
 #### HSN on this document (29 October 2026)
 

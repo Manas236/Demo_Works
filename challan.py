@@ -107,7 +107,7 @@ import boqpick as BP
 # The manual PO's Specification-library picker (31 Oct 2026), reused for a
 # challan's EXTRA items (17 Nov 2026, §0 seventy-fifth block). A leaf: it reads
 # the library out of STORE and never writes it.
-import buypick as BYP
+import extraitems as EX  # extra items + project link — the leaf (17 Nov 2026)
 import units as UN     # the shared unit list — the leaf (29 Oct 2026)
 import branding as B
 # "Is this challan billed, and by which RA bill?" (CLIENT_CHANGES.md §0,
@@ -447,10 +447,8 @@ def consignee_from(form) -> tuple:
 # ⚠ **A record without these keys renders exactly as before.** Nothing is
 #   migrated; `_document_html()` is untouched and prints every stored row.
 
-# The rows the extras section opens with; "+ Add item" adds more.
-DEFAULT_EXTRA_ROWS = 1
-MAX_EXTRA_ROWS = 100
-EXTRA_DESC_MAX = 500
+# The rows the extras section opens with, the cap and the description cap
+# live in `extraitems.py` with the helpers (17 Nov 2026).
 
 # The refusal `picked_lines()` makes when nothing is ticked. A BOQ challan
 # carrying extra items may tick no BOQ line, so the caller recognises it.
@@ -458,10 +456,15 @@ EMPTY_PICK_MSG = ("No lines are ticked. A challan with nothing on it is not a "
                   "document — tick what is going out, or cancel.")
 
 
+# ⚠ **The helpers below LIVE IN `extraitems.py`** (17 Nov 2026, §0
+#   seventy-sixth block) — lifted at their second consumer, the Product
+#   Inquiry, which may not import this module. These names stay so every
+#   caller and test is unchanged, and the defaults there are this module's
+#   own strings, so the challan's forms render byte-for-byte as before.
+
 def is_extra(row) -> bool:
     """A row the operator added by hand — never a BOQ line."""
-    return bool(isinstance(row, dict) and row.get("extra")
-                and not BQ._line_id(row.get("line_id")))
+    return EX.is_extra(row)
 
 
 def has_boq_lines(dc) -> bool:
@@ -476,169 +479,28 @@ def has_boq_lines(dc) -> bool:
 
 
 def project_link_from(form) -> tuple:
-    """
-    `({project_id, project_name}, error)` for a no-BOQ challan's optional
-    project. The name is SNAPSHOTTED, as on a charge, so the register still
-    reads if the project is renamed or deleted later.
-    """
-    pid = (form.get("project_id") or "").strip()[:64]
-    if not pid:
-        return {"project_id": "", "project_name": ""}, ""
-    proj = (STORE.get("projects") or {}).get(pid)
-    if not proj:
-        return {}, "That project no longer exists. Pick another, or leave it blank."
-    return {"project_id": pid, "project_name": str(proj.get("name") or "")}, ""
+    """`extraitems.project_link_from()` — the optional project, snapshotted."""
+    return EX.project_link_from(form)
 
 
 def parse_extras(form) -> tuple:
-    """
-    `(rows, error)` — the extra items typed or picked on the form.
-
-    Per row: a **description** (typed, or the Specification-library pick's
-    name when the box is left blank), a **quantity above 0**, and a unit (the
-    pick's unit when none is chosen). A row left wholly blank is skipped. The
-    pick is re-read from the library NOW (`buypick.resolve()`); the browser's
-    copy is never trusted, and the library is never written.
-    """
-    descs = form.getlist("xi_desc")
-    qtys = form.getlist("xi_qty")
-    units = form.getlist("xi_unit")
-    picks = form.getlist("line_product_id")
-    n_rows = max(len(descs), len(qtys), len(units), len(picks))
-
-    def _at(seq, n):
-        return str(seq[n] if n < len(seq) else "").strip()
-
-    out = []
-    for n in range(n_rows):
-        desc = _at(descs, n)[:EXTRA_DESC_MAX]
-        qty_raw = _at(qtys, n)
-        unit = _at(units, n)[:30]
-        pick = _at(picks, n)
-        if not (desc or qty_raw or pick):
-            continue        # a unit alone is the dropdown's default, not a row
-        ident = {}
-        if pick:
-            if not pick.startswith(BYP.SPEC_PREFIX):
-                return [], f"Extra item {n + 1}: pick from the specification library, or type it."
-            ident, err = BYP.resolve(pick)
-            if err:
-                return [], f"Extra item {n + 1}: {err}"
-        desc = desc or str(ident.get("name") or "")[:EXTRA_DESC_MAX]
-        if not desc:
-            return [], f"Extra item {n + 1} has no description. Say what is going out."
-        try:
-            qty = float(qty_raw)
-        except ValueError:
-            return [], f"Quantity for '{desc}' must be a number above 0."
-        if not qty > 0:
-            return [], f"Quantity for '{desc}' must be above 0."
-        unit = unit or str(ident.get("unit") or "")[:30]
-        row = {"line_id": None, "extra": True, "is_header": False,
-               "item_no": "", "description": desc, "unit": unit,
-               "qty": float(qty),
-               "source": "spec" if ident else "typed"}
-        if ident:
-            row["src_spec_id"] = ident.get("src_spec_id")
-            row["src_vidx"] = ident.get("src_vidx")
-        out.append(row)
-    if len(out) > MAX_EXTRA_ROWS:
-        return [], (f"{len(out)} extra items; the limit is {MAX_EXTRA_ROWS}. "
-                    f"Raise more than one challan.")
-    return out, ""
-
-
-# Plain text, SINGLE braces: spliced into the page as a value, never re-parsed
-# as an f-string.
-_EXTRA_JS = """<script>
-/* One more extra-item row, cloned from the template. */
-function dcAddExtra() {
-  var t = document.getElementById('dc-xi-tpl');
-  var box = document.getElementById('dc-xi-rows');
-  if (t && box) box.appendChild(t.content.cloneNode(true));
-}
-/* A library pick fills a BLANK description; a typed one is never replaced. */
-function dcPick(sel) {
-  var row = sel.closest('.line-row');
-  var d = row ? row.querySelector('input[name="xi_desc"]') : null;
-  var o = sel.options[sel.selectedIndex];
-  if (d && o && o.value && !d.value) d.value = o.getAttribute('title') || o.textContent;
-}
-</script>"""
+    """`(rows, error)` — the extra items, by `extraitems.parse_extras()`."""
+    return EX.parse_extras(form)
 
 
 def _extra_row_html(desc="", qty="", unit="", pick="", spec=None) -> str:
-    """One extra-item row. Styled on the element: the challan sheets are pinned."""
-    opts = ('<option value="">&mdash; or pick from the specification library &mdash;</option>'
-            + BYP.groups_html(pick, with_spec=True, spec=spec, boq=[]))
-    return f"""
-        <div class="line-row" style="display:grid;grid-template-columns:minmax(150px,1fr) minmax(180px,1.4fr) minmax(200px,2fr) 110px 90px 34px;gap:.5rem;align-items:center;margin-bottom:.45rem;">
-          <input type="text" placeholder="{BYP.FIND_PLACEHOLDER}" oninput="findItem(this)" aria-label="Search the library"/>
-          <select name="line_product_id" onchange="dcPick(this)" aria-label="Specification library">{opts}</select>
-          <input type="text" name="xi_desc" value="{P.esc(desc)}" maxlength="{EXTRA_DESC_MAX}"
-                 placeholder="Description (required)" aria-label="Description"/>
-          {UN.select_html("xi_unit", unit, blank="Unit")}
-          <input type="number" name="xi_qty" value="{P.esc(qty)}" min="0" step="any"
-                 placeholder="Qty" aria-label="Quantity"/>
-          <button type="button" class="btn-remove-line" title="Remove this item"
-                  onclick="this.closest('.line-row').remove();">&#215;</button>
-        </div>"""
+    """One extra-item row — `extraitems.extra_row_html()`."""
+    return EX.extra_row_html(desc, qty, unit, pick, spec=spec)
 
 
 def _extras_section_html(stored: list = None, posted=None) -> str:
-    """
-    The *Extra items* section — on every challan form, BOQ or not.
-
-    Filled from what was just posted (a refused POST comes back as typed),
-    else from the challan's stored extras, else one blank row.
-    """
-    BYP.ensure_seeded()
-    spec = BYP.spec_entries()
-    rows_data = []
-    if posted is not None:
-        descs, qtys = posted.getlist("xi_desc"), posted.getlist("xi_qty")
-        units, picks = posted.getlist("xi_unit"), posted.getlist("line_product_id")
-        for n in range(max(len(descs), len(qtys), len(units), len(picks))):
-            rows_data.append(tuple(seq[n] if n < len(seq) else ""
-                                   for seq in (descs, qtys, units, picks)))
-    else:
-        for r in stored or []:
-            pick = (f"{BYP.SPEC_PREFIX}{r.get('src_spec_id')}:{r.get('src_vidx')}"
-                    if r.get("src_spec_id") else "")
-            rows_data.append((str(r.get("description") or ""),
-                              BQ._fmt_qty(r.get("qty") or 0),
-                              str(r.get("unit") or ""), pick))
-    while len(rows_data) < DEFAULT_EXTRA_ROWS:
-        rows_data.append(("", "", "", ""))
-    rows = "".join(_extra_row_html(*r, spec=spec) for r in rows_data)
-    return f"""
-    <div class="form-section">
-      <div class="section-title">Extra items &mdash; not on the schedule</div>
-      <p style="font-size:.82rem;color:var(--muted);margin:-.4rem 0 .9rem;">
-        Anything going out that is not a BOQ line. Type it, or pick it from the
-        specification library. <b>Description and a quantity above 0 are
-        required.</b> Extra items print on the challan after the BOQ lines and
-        are never billed on an RA bill.
-      </p>
-      <input type="hidden" name="xi_present" value="1"/>
-      <div id="dc-xi-rows">{rows}</div>
-      <template id="dc-xi-tpl">{_extra_row_html(spec=spec)}</template>
-      <button type="button" class="btn btn-ghost" onclick="dcAddExtra()"
-              style="margin-top:.3rem;">+ Add item</button>
-    </div>
-    {BYP.FIND_JS}{_EXTRA_JS}"""
+    """The *Extra items* section — `extraitems.extras_section_html()`."""
+    return EX.extras_section_html(stored, posted, fmt_qty=BQ._fmt_qty)
 
 
 def _project_select_html(selected: str = "") -> str:
-    """A no-BOQ challan's optional project — `charge.py`'s picker."""
-    opts = '<option value="">No project</option>'
-    for pid, p in sorted((STORE.get("projects") or {}).items(),
-                         key=lambda kv: str(kv[1].get("name") or "")):
-        sel = " selected" if pid == selected else ""
-        opts += f'<option value="{P.esc(pid)}"{sel}>{P.esc(p.get("name"))}</option>'
-    return (f'<div class="form-group"><label for="project_id">Project (optional)</label>'
-            f'<select id="project_id" name="project_id">{opts}</select>'
-            f'<div class="fld-hint">Shows this challan on that project&rsquo;s page.</div></div>')
+    """A no-BOQ challan's optional project — `extraitems.project_select_html()`."""
+    return EX.project_select_html(selected)
 
 
 # =============================================================================

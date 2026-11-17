@@ -7215,6 +7215,67 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 17 November 2026, by Manas Gawde — PRODUCT INQUIRY WITHOUT A BOQ, AND EXTRA ITEMS ON ANY INQUIRY · NO CHARGE · POST-GO-LIVE PROD HOTFIX 2
+>
+> **A new block, not an amendment.** Every earlier block stands. This is the
+> **seventy-sixth** occasion, written **directly on the production box**
+> (`samruddhi-prod`, branch `antigravity-dev`, from `c96fe71`, then 2 ahead /
+> 5 behind origin — nothing pulled). Recorded **"authorised, no charge"** on
+> Manas's written brief for this hotfix.
+>
+> **What was asked:** (A) a Product Inquiry (`po_draft.py`, series `SF/DPO`)
+> with no BOQ — `boq_id` None, the supplier picker + free text, an optional
+> project with a snapshotted name; (B) *Add extra item* rows on every
+> inquiry, create and edit, through the same Specification-library + free-text
+> picker as the 17 Nov challan extras — Description, Make, Qty, Unit, Pcs and
+> the existing named picture — never writing the library, stored `line_id`
+> None, `extra` True, at least one line overall; (C) the same series and
+> counter, the print unchanged in layout with extras after the BOQ lines, the
+> BOQ-inquiry print golden byte-identical; (D) *Convert to Purchase Order*
+> for no-BOQ inquiries and extras, rates prefilled from the library's supply
+> base rate else blank, BOQ lines converting exactly as before; (E) a no-BOQ
+> inquiry on its project's page with the P&L unmoved; (F) existing
+> permissions only.
+>
+> **Judgement calls, declared:**
+> 1. **The challan's extras helpers were LIFTED into a new leaf,
+>    `extraitems.py`**, not copied: `po_draft.py` may not import
+>    `challan.py` (`test_the_two_consumers_of_the_picker_do_not_know_about_
+>    each_other`). `challan.py` keeps its function names as thin wrappers;
+>    every `/dc` page (create with and without a BOQ, edit with an extra,
+>    view, print) was rendered before and after and is **byte-identical**.
+> 2. **An extra converts into the real order's EXTRA LINES**, prefilled on the
+>    conversion form's GET, never through the BOQ-line path — that path keys
+>    every posted value on `line_id`, so two extras would have collided on
+>    `""`. The BOQ-line path is unchanged.
+> 3. **An extra's description is capped at 200 characters**, the PO extra
+>    line's own cap, so nothing is cut silently at conversion (the challan
+>    keeps 500).
+> 4. **A picture on an extra**: a select over the item's library on the edit
+>    form (and on a refused redraw); a blank new row has no description to
+>    offer a library for, so a NEW picture is uploaded on the inquiry's
+>    Pictures page, which addresses lines by position and needed no change.
+>    The picture's NAME does not travel into a PO extra line (that record
+>    carries only `image`).
+> 5. **Qty above 0** on an extra, the challan's rule (a BOQ line on this
+>    document may still be 0, unchanged).
+> 6. **The lock-after-convert rule is untouched** — since 2 Nov 2026 a
+>    converted inquiry is editable and the edit is logged; extras follow it.
+> 7. No-BOQ create is `?noboq=1` on the existing `/po/create` — **no new
+>    endpoint, no access-matrix change**. `pnl.py` is untouched (it counts
+>    inquiries by BOQ only and an inquiry carries no money); a test asserts
+>    `project_pnl()` is equal before and after.
+> 8. Goldens: `/po/print` **byte-identical**; `/po/` register `main` only,
+>    +91 bytes (the button; stripping it gives the old digest); the pinned
+>    `/po/create` form re-baselined in `js` (the extras section) and `head`
+>    (one rail line: *Spec Library* 0 -> 56, because that fixture starts with
+>    an empty library and the section seeds the genuine default one, as
+>    `/dc/create` already does) — with the section stubbed out the form
+>    hashes to the old digest exactly. Every DC page and the BOQ inquiry's
+>    view, print and conversion pages were byte-compared before and after.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

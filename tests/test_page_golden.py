@@ -531,8 +531,15 @@ PAGES = {
         {"head": "5dba095cb4b0893a", "shell": "a1e6c63a6d4c6ac2", "chrome": "3c4364586ec6edbd", "main": "3ac3f9c07d30187e"}),   # table fit 30 Oct 2026: moved=['head', 'main'], +3027 bytes
     ("clients",         "/client/"):                   ("ec3d07c8ad343590", 75553,
         {"head": "988fb2a12fb791bb", "shell": "a1e6c63a6d4c6ac2", "chrome": "8c53e352bfe5210d", "main": "6da1dc1aca0606c4"}),   # table fit 30 Oct 2026: moved=['head', 'main'], +3092 bytes
-    ("draft POs",       "/po/"):                       ("8314ea723a0fdcc8", 74268,
-        {"head": "ee075a3c146a36b3", "shell": "a1e6c63a6d4c6ac2", "chrome": "2188f23e97ff0ab1", "main": "9db6cea2e6477047"}),   # table fit 30 Oct 2026: moved=['head', 'main'], +3084 bytes
+    # ⚠ re-baselined 17 November 2026 — `main` ONLY, +91 bytes (§0
+    #   seventy-sixth block): the "New Product Inquiry (no BOQ)" button beside
+    #   Bills of Quantities. Measured before the baseline was touched: the
+    #   page with that one 91-byte anchor removed hashed to the OLD whole-page
+    #   digest 8314ea723a0fdcc8 / 74268 exactly. `head`, `shell`, `chrome`
+    #   unmoved; every existing register row is byte-identical. The old values:
+    #       ("8314ea723a0fdcc8", 74268, {..., "main": "9db6cea2e6477047"})
+    ("draft POs",       "/po/"):                       ("fb00a6aba95299a2", 74359,
+        {"head": "ee075a3c146a36b3", "shell": "a1e6c63a6d4c6ac2", "chrome": "2188f23e97ff0ab1", "main": "d6a146c553c3e319"}),   # §0 76th: moved=['main'], +91 bytes
     # ⚠ re-baselined 17 November 2026 — `main` ONLY, +78 bytes (§0
     #   seventy-fifth block): the "New DC (no BOQ)" button beside Bills of
     #   Quantities. Measured before the baseline was touched: the page with

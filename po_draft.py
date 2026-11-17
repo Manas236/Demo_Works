@@ -91,6 +91,7 @@ import pipeline as P
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import settings as SET
 import docnum as DN    # the typed number, forward only (31 Oct 2026, §0 64th, Part 3)
+import extraitems as EX  # extra items + the optional project — the leaf (17 Nov 2026)
 import units as UN   # the shared unit list — the leaf (29 Oct 2026)
 from address import picker_options, format_address_lines, VENDOR_TYPES
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
@@ -294,7 +295,7 @@ UNIT_MAX = 30            # `purchase._parse_extra_lines()`'s
 PCS_MAX = 16             # `create_po()`'s, from the picker
 
 
-def parse_items(form, po: dict) -> tuple:
+def parse_items(form, po: dict, allow_empty: bool = False) -> tuple:
     """
     `(items, error)` for the full line editor — **and nothing is returned until
     every row has been read**, so a bad fourth row does not leave the first
@@ -362,6 +363,8 @@ def parse_items(form, po: dict) -> tuple:
     n_rows = max(len(lids), len(kinds), len(item_nos), len(descs), len(units),
                  len(qtys), len(pcses), len(makes), len(hsns))
 
+    # `allow_empty` (17 Nov 2026): the inquiry still has an EXTRA item, so an
+    # emptied editor is not an empty document — the caller checks the whole.
     known = {BQ._line_id(r.get("line_id")) for r in (po.get("items") or [])}
     known.discard("")
     used = set()
@@ -432,7 +435,7 @@ def parse_items(form, po: dict) -> tuple:
             LI.apply_choice(row, _at(images, i), stored_row or row)
         out.append(row)
 
-    if not any(not r["is_header"] for r in out):
+    if not any(not r["is_header"] for r in out) and not allow_empty:
         return [], ("There is nothing on this document to price. Add at least "
                     "one line, or cancel.")
     if len(out) > MAX_PO_LINES:
@@ -533,9 +536,68 @@ def picked_lines(raw: str, boq: dict) -> tuple:
     return BP.picked_lines(
         raw, boq, with_pcs=True, with_make=True, with_image=True,
         max_lines=MAX_PO_LINES,
-        empty_msg=("No lines are ticked. A purchase order with nothing on it "
-                   "is not a document — tick at least one line, or cancel."),
+        empty_msg=EMPTY_PICK_MSG,
         cap_msg="Raise more than one order.")
+
+
+# =============================================================================
+# EXTRA ITEMS, AND AN INQUIRY WITHOUT A BOQ
+# (17 November 2026, CLIENT_CHANGES.md §0 seventy-sixth block)
+# =============================================================================
+#
+# ⚠ **An extra item is NOT a schedule line.** Stored with `line_id: None` and
+#   `extra: True`, after the BOQ lines — the delivery challan's shape, through
+#   the same leaf (`extraitems.py`). The Pictures page addresses a line by its
+#   POSITION (`it:<n>`), so an extra takes a picture like any line; and
+#   `purchase.from_draft()` carries an extra into the real order's extra-line
+#   repeater, never through the BOQ-line path.
+#
+# ⚠ **A no-BOQ inquiry has `boq_id: None`.** Same `SF/DPO` series and counter,
+#   lines are extras only, and it reaches a project only through its own
+#   `project_id`, the name snapshotted beside it.
+#
+# ⚠ **A record without these keys renders exactly as before.** Nothing is
+#   migrated; `_document_html()` is untouched and prints every stored row.
+
+EMPTY_PICK_MSG = ("No lines are ticked. A purchase order with nothing on it "
+                  "is not a document — tick at least one line, or cancel.")
+
+# A converted extra lands in the real order's extra-line repeater, whose
+# description box holds 200 characters (`purchase._parse_extra_lines()`), so
+# an extra is held to the same cap rather than cut silently at conversion.
+EXTRA_DESC_MAX = 200
+
+EXTRAS_TITLE = "Extra items &mdash; not on the schedule"
+EXTRAS_INTRO = """
+        Anything the supplier is to price that is not a BOQ line. Type it, or
+        pick it from the specification library. <b>Description and a quantity
+        above 0 are required.</b> Extra items print after the BOQ lines, with
+        no rate, like every other line. A picture is chosen from the item&rsquo;s
+        own library here, or uploaded on the inquiry&rsquo;s Pictures page.
+      """
+
+
+def _extras_kw() -> dict:
+    return dict(pfx="dpo", title=EXTRAS_TITLE, intro_html=EXTRAS_INTRO,
+                desc_max=EXTRA_DESC_MAX, with_make=True, make_max=BP.MAKE_MAX,
+                with_pcs=True, with_image=True, fmt_qty=BQ._fmt_qty)
+
+
+def parse_extras(form, stored: list = None) -> tuple:
+    """`(rows, error)` — the extra items on an inquiry form."""
+    return EX.parse_extras(form, desc_max=EXTRA_DESC_MAX, with_make=True,
+                           make_max=BP.MAKE_MAX, with_pcs=True, with_image=True,
+                           stored=stored,
+                           what_msg="Say what the supplier is being asked to price.",
+                           cap_msg="Raise more than one inquiry.")
+
+
+def _extras_html(stored: list = None, posted=None) -> str:
+    return EX.extras_section_html(stored, posted, **_extras_kw())
+
+
+def is_extra(row) -> bool:
+    return EX.is_extra(row)
 
 
 def _validate(form, boq: dict) -> tuple:
@@ -943,19 +1005,36 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     `banner_html` (18 October 2026) is Import from Excel's note, spliced under
     the alert; "" emits the form it always emitted.
     """
+    # A no-BOQ inquiry (17 Nov 2026, §0 seventy-sixth block) has `boq` None:
+    # no picker, no import, a project picker instead, and the extras section
+    # is its only source of lines.
+    standalone = not (boq and boq.get("id"))
+    boq = boq or {}
     boq_ref = P.esc(boq.get("ref") or "")
     editing = po is not None
     # Import from Excel (18 October 2026). Create form only, and drawn
     # unconditionally: `docimport.upload_dpo` carries `po.create`, this form's
     # own permission — `tests/test_doc_import.py` holds the two equal.
-    import_btn = ("" if editing else
+    import_btn = ("" if editing or standalone else
                   f'\n      <a href="{url_for("docimport.upload_dpo", boq=boq.get("id"))}" '
                   f'class="btn btn-ghost">&#128229; Import from Excel</a>')
     action = (url_for("po_draft.edit_po", id=po["id"]) if editing
+              else url_for("po_draft.create_po", noboq=1) if standalone
               else url_for("po_draft.create_po", boq=boq.get("id")))
+    back_url = (url_for("po_draft.list_pos") if standalone
+                else url_for("boq.view_boq", id=boq.get("id")))
+    boq_back = ("" if standalone else
+                f'\n      <a href="{back_url}" class="btn btn-ghost">&#8592; {boq_ref}</a>')
+    against = ("Raised <b>without a bill of quantities</b>" if standalone else
+               f'Against <b>{boq_ref}</b> &middot; {P.esc(boq.get("project_name") or "")}\n'
+               f'    &middot; {P.esc(boq.get("account_name") or "")}')
+    project_html = ("" if not standalone else
+                    '\n        <div class="form-group span2">'
+                    + EX.project_select_html(data.get("project_id", ""), noun="inquiry")
+                    + "</div>")
 
     picker = ""
-    if not editing:
+    if not editing and not standalone:
         picker = BP.grid_html(
             boq,
             title="Lines to order",
@@ -995,7 +1074,8 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     if editing:
         rows_src = data.get("_items")
         if rows_src is None:
-            rows_src = list(po.get("items") or [])
+            # Extras are drawn in their own section below (17 Nov 2026).
+            rows_src = [r for r in po.get("items") or [] if not is_extra(r)]
         items_html = f"""
     <div class="form-section">
       <div class="section-title">Lines</div>
@@ -1032,6 +1112,12 @@ def _entry_form(boq: dict, data: dict, error: str = "",
     </div>
     {_edit_script(boq)}"""
 
+    # Extra items — on EVERY inquiry form, BOQ or not, create and edit
+    # (17 Nov 2026, §0 seventy-sixth block).
+    extras_html = _extras_html(
+        [r for r in (po or {}).get("items") or [] if is_extra(r)],
+        data.get("_xposted"))
+
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -1046,8 +1132,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
   <div class="page-top">
     <h1>{"Edit " if editing else ""}Product <span>Inquiry</span></h1>
     <div style="display:flex;gap:.7rem;">{import_btn}
-      <a href="{url_for('po_draft.list_pos')}" class="btn btn-ghost">All {DOC_NAME_PLURAL}</a>
-      <a href="{url_for('boq.view_boq', id=boq.get('id'))}" class="btn btn-ghost">&#8592; {boq_ref}</a>
+      <a href="{url_for('po_draft.list_pos')}" class="btn btn-ghost">All {DOC_NAME_PLURAL}</a>{boq_back}
     </div>
   </div>
 
@@ -1056,8 +1141,7 @@ def _entry_form(boq: dict, data: dict, error: str = "",
   <div class="set-intro" style="background:var(--surface);border:1px solid var(--border);
        border-left:3px solid var(--brand);border-radius:var(--radius);
        padding:.9rem 1.1rem;margin-bottom:1.2rem;font-size:.86rem;line-height:1.6;">
-    Against <b>{boq_ref}</b> &middot; {P.esc(boq.get("project_name") or "")}
-    &middot; {P.esc(boq.get("account_name") or "")}<br/>
+    {against}<br/>
     This order will be numbered <b>{P.esc(next_ref()) if not editing else P.esc(po.get("ref"))}</b>
     from the one running series at <a href="{url_for('settings.edit_settings')}">Settings</a>.
   </div>
@@ -1087,15 +1171,15 @@ def _entry_form(boq: dict, data: dict, error: str = "",
         <div class="form-group span2">
           <label for="notes">Notes / terms</label>
           <textarea id="notes" name="notes" rows="3">{P.esc(data.get('notes', ''))}</textarea>
-        </div>
+        </div>{project_html}
       </div>
     </div>
 
-    {picker}{items_html}
+    {picker}{items_html}{extras_html}
 
     <div class="set-actions" style="display:flex;gap:.75rem;margin-top:1.4rem;">
       <button type="submit" class="btn">{"Save changes" if editing else "Raise " + DOC_NAME_LOWER}</button>
-      <a href="{url_for('boq.view_boq', id=boq.get('id'))}" class="btn btn-ghost">Cancel</a>
+      <a href="{back_url}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
   {"" if editing else FD.script('form[action*="/po/create"]', DOC_NAME_LOWER, resumed=request.method == "POST" and FD.is_resume(request.form))}
@@ -1239,12 +1323,15 @@ def list_pos():
             f'<a href="{url_for("purchase.view_purchase", id=rid)}">'
             f'{P.esc(rec.get("ref"))}</a>'
             for rid, rec in converted_pos(po)) or '&mdash;'
+        # A no-BOQ inquiry (17 Nov 2026) links to no schedule.
+        boq_cell = (f'<a href="{url_for("boq.view_boq", id=po.get("boq_id", ""))}">'
+                    f'{P.esc(po.get("boq_ref"))}</a>' if po.get("boq_id") else '&mdash;')
         rows += f"""
         <tr>
           <td><a href="{url_for('po_draft.view_po', id=pid)}"><b>{P.esc(po.get("ref"))}</b></a></td>
           <td>{P.esc(po.get("date"))}</td>
           <td>{P.esc(po.get("vendor_name")) or '&mdash;'}</td>
-          <td><a href="{url_for('boq.view_boq', id=po.get('boq_id', ''))}">{P.esc(po.get("boq_ref"))}</a></td>
+          <td>{boq_cell}</td>
           <td>{P.esc(po.get("project_name")) or '&mdash;'}</td>
           <td style="text-align:right;">{n}</td>
           <td>{converted}</td>
@@ -1256,6 +1343,12 @@ def list_pos():
                 'bill of quantities.</td></tr>')
 
     series = SET.po_series()
+    # "New Product Inquiry (no BOQ)" (17 Nov 2026, §0 seventy-sixth block) —
+    # beside the BOQ entry, drawn only for a user `/po/create` would admit.
+    import auth as _AUTH
+    new_btn = (f'\n      <a href="{url_for("po_draft.create_po", noboq=1)}" '
+               f'class="btn">&#43;&nbsp;New {DOC_NAME} (no BOQ)</a>'
+               if _AUTH.can_reach("po_draft.create_po") else "")
     return _page(f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -1270,7 +1363,7 @@ def list_pos():
   <div class="page-top">
     <h1>Product <span>Inquiries</span></h1>
     <div style="display:flex;gap:.7rem;">
-      <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">Bills of Quantities</a>
+      <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">Bills of Quantities</a>{new_btn}
     </div>
   </div>
 
@@ -1309,6 +1402,10 @@ def create_po(imported: dict = None):
     and pieces. Flask never passes it; the POST path never reads it.
     """
     boq_id = (imported or {}).get("boq_id") or request.args.get("boq") or ""
+    # An inquiry with NO BOQ (17 Nov 2026, §0 seventy-sixth block): asked for
+    # explicitly, so a stale or missing `?boq=` still refuses as it always did.
+    if not boq_id and not imported and request.args.get("noboq"):
+        return _create_standalone()
     boq = (STORE.get("boqs") or {}).get(boq_id)
     if not boq:
         return redirect(url_for("boq.list_boqs",
@@ -1335,7 +1432,12 @@ def create_po(imported: dict = None):
 
     data, error = _validate(request.form, boq)
     items, line_error = ([], "") if error else picked_lines(data["po_json"], boq)
-    error = error or line_error
+    # Extra items (17 Nov 2026): after the BOQ lines. Ticking no BOQ line is
+    # allowed when there is an extra — the inquiry still has a line.
+    extras, x_error = parse_extras(request.form)
+    if line_error == EMPTY_PICK_MSG and extras and not x_error:
+        line_error = ""
+    error = error or line_error or x_error
     # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS.
     resuming = FD.is_resume(request.form)
     # The number, typed forward only (31 Oct 2026, §0 sixty-fourth block,
@@ -1367,6 +1469,8 @@ def create_po(imported: dict = None):
         # And the chosen picture (29 Oct 2026, B2), for the same reason.
         data["_image"] = {BQ._line_id(r.get("line_id")): str(r.get("image") or "")
                           for r in posted if isinstance(r, dict)}
+        # And the extra items, as typed (17 Nov 2026).
+        data["_xposted"] = request.form
         return _entry_form(boq, data, "" if resuming else error)
 
     # Carry the typed Pcs across. It is not on the BOQ and never will be.
@@ -1392,6 +1496,7 @@ def create_po(imported: dict = None):
             code = hsn_of.get(row["line_id"], "")
             if code:
                 row["hsn"] = code
+    items = list(items) + list(extras)
 
     pid = new_id()
     default_ref = next_ref()
@@ -1413,6 +1518,60 @@ def create_po(imported: dict = None):
         "delivery_to": data["delivery_to"],
         "notes": data["notes"],
         "items": items,
+        "company_branch": "", "auth_signatory": "",
+    }
+    DN.record_override(STORE["purchase_orders"][pid], default_ref,
+                       STORE["purchase_orders"][pid]["ref"], _actor_id())
+    return redirect(url_for("po_draft.view_po", id=pid,
+                            msg=f"{DOC_NAME} raised.", type="success"))
+
+
+def _create_standalone():
+    """
+    `/po/create?noboq=1` — a Product Inquiry with NO BOQ (17 Nov 2026, §0
+    seventy-sixth block). The same form, the same supplier picker and free
+    text, the same number rules and the SAME `SF/DPO` series and counter; its
+    lines are extra items only, and it may name a project. `boq_id` is None.
+    """
+    if request.method == "GET":
+        return _entry_form(None, {"date": _date.today().isoformat()})
+
+    data, error = _validate(request.form, {})
+    link, link_error = EX.project_link_from(request.form)
+    extras, x_error = parse_extras(request.form)
+    error = error or link_error or x_error
+    if not error and not extras:
+        error = ("There is nothing on this inquiry to price. Add at least one "
+                 "item, or cancel.")
+    resuming = FD.is_resume(request.form)
+    data["doc_no_seq"] = (request.form.get("doc_no_seq") or "").strip()
+    default_n = int(SET.po_series()["next_no"] or 1)
+    typed_n = default_n
+    if not error and not resuming:
+        typed_n, num_err = DN.validate(DN.DPO, "", data["doc_no_seq"], default_n,
+                                       _may_set_number())
+        error = error or num_err
+    if error or resuming:
+        data["project_id"] = (request.form.get("project_id") or "").strip()[:64]
+        data["_xposted"] = request.form
+        return _entry_form(None, data, "" if resuming else error)
+
+    pid = new_id()
+    default_ref = next_ref()
+    STORE.setdefault("purchase_orders", {})[pid] = {
+        "id": pid,
+        "ref": _spend_ref(typed_n),
+        "date": data["date"],
+        "boq_id": None,
+        "boq_ref": "",
+        "boq_rev_no": 0,
+        **link,
+        "site_location": "",
+        "account_name": "",
+        **data["vendor"],
+        "delivery_to": data["delivery_to"],
+        "notes": data["notes"],
+        "items": extras,
         "company_branch": "", "auth_signatory": "",
     }
     DN.record_override(STORE["purchase_orders"][pid], default_ref,
@@ -1465,6 +1624,11 @@ def view_po(id: str):
     # (logged); the greyed control it replaced is gone with the lock.
     edit_btn = (f'<a href="{url_for("po_draft.edit_po", id=id)}" '
                 f'class="btn btn-ghost">Edit</a>')
+    # The schedule button only when there IS one (17 Nov 2026 — a no-BOQ
+    # inquiry has `boq_id` None).
+    boq_btn = (f'\n    <a href="{url_for("boq.view_boq", id=po.get("boq_id", ""))}" '
+               f'class="btn btn-ghost">{P.esc(po.get("boq_ref"))}</a>'
+               if po.get("boq_id") else "")
     pics_btn = ""
     if _AUTH.can_reach("po_draft.pictures"):
         pics_btn = (f'\n    <a href="{url_for("po_draft.pictures", id=id)}" '
@@ -1487,8 +1651,7 @@ def view_po(id: str):
     {DOC_NAME} <span style="color:var(--brand);">{P.esc(po.get('ref'))}</span>
   </h1>
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
-    <a href="{url_for('po_draft.list_pos')}" class="btn btn-ghost">All {DOC_NAME_PLURAL}</a>
-    <a href="{url_for('boq.view_boq', id=po.get('boq_id', ''))}" class="btn btn-ghost">{P.esc(po.get('boq_ref'))}</a>
+    <a href="{url_for('po_draft.list_pos')}" class="btn btn-ghost">All {DOC_NAME_PLURAL}</a>{boq_btn}
     {convert_html}
     {edit_btn}{pics_btn}
     <a href="{url_for('po_draft.delete_po', id=id)}" class="btn btn-ghost">Delete</a>
@@ -1593,11 +1756,15 @@ def edit_po(id: str):
     #                                   msg=P.esc(LOCK_REASON).replace("&mdash;", "—"),
     #                                   type="error"))
 
-    boq = (STORE.get("boqs") or {}).get(po.get("boq_id", "")) or {
-        "id": po.get("boq_id", ""), "ref": po.get("boq_ref", ""),
-        "project_name": po.get("project_name", ""),
-        "account_name": po.get("account_name", ""), "line_items": [],
-    }
+    # A no-BOQ inquiry (17 Nov 2026) is edited with `boq` None: no schedule
+    # source on the form, and its project picker instead.
+    standalone = not po.get("boq_id")
+    boq = None if standalone else (
+        (STORE.get("boqs") or {}).get(po.get("boq_id", "")) or {
+            "id": po.get("boq_id", ""), "ref": po.get("boq_ref", ""),
+            "project_name": po.get("project_name", ""),
+            "account_name": po.get("account_name", ""), "line_items": [],
+        })
 
     if request.method == "GET":
         return _entry_form(boq, {
@@ -1607,11 +1774,28 @@ def edit_po(id: str):
             "vendor_name": po.get("vendor_name", "") if not po.get("vendor_id") else "",
             "vendor_gstin": po.get("vendor_gstin", "") if not po.get("vendor_id") else "",
             "vendor_addr": "",
+            "project_id": po.get("project_id", "") or "",
         }, po=po)
 
-    data, error = _validate(request.form, boq)
-    items, line_error = (None, "") if error else parse_items(request.form, po)
+    data, error = _validate(request.form, boq or {})
+    # Extra items (17 Nov 2026) are read only when the form drew them
+    # (`xi_present`); a stale tab keeps the stored ones, the DC's rule.
+    stored_extras = [r for r in po.get("items") or [] if is_extra(r)]
+    read_extras = bool(request.form.get("xi_present"))
+    extras, x_error = (parse_extras(request.form, stored_extras) if read_extras
+                       else (stored_extras, ""))
+    link, link_error = (EX.project_link_from(request.form) if standalone
+                        else ({}, ""))
+    error = error or x_error or link_error
+    items, line_error = (None, "") if error else parse_items(
+        request.form, po, allow_empty=bool(extras))
     error = error or line_error
+    if not error:
+        kept = ([r for r in po.get("items") or [] if not is_extra(r)]
+                if items is None else items)
+        if not any(not r.get("is_header") for r in kept) and not extras:
+            error = ("There is nothing on this document to price. Add at least "
+                     "one line, or cancel.")
     own_n = DN.ordinal_of(po.get("ref"))
     typed_n = own_n
     if not error:
@@ -1621,6 +1805,8 @@ def edit_po(id: str):
         # Hand the operator back exactly what they typed, rows and all — a
         # browser cannot refill a form and a refused save must not lose work.
         data["_items"] = _posted_rows(request.form)
+        data["_xposted"] = request.form if read_extras else None
+        data["project_id"] = (request.form.get("project_id") or "").strip()[:64]
         return _entry_form(boq, data, error, po=po)
 
     import editlog as _EL
@@ -1630,8 +1816,13 @@ def edit_po(id: str):
     po["notes"] = data["notes"]
     po["delivery_to"] = data["delivery_to"]
     # `None` is a stale tab (`parse_items()`), and leaves the lines alone.
-    if items is not None:
-        po["items"] = items
+    # Extras always follow the other lines (17 Nov 2026).
+    if items is not None or read_extras:
+        base = (items if items is not None
+                else [r for r in po.get("items") or [] if not is_extra(r)])
+        po["items"] = list(base) + list(extras)
+    if standalone:
+        po.update(link)
     po.update(data["vendor"])
     if typed_n != own_n:
         ref_was = str(po.get("ref") or "")

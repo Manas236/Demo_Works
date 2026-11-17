@@ -1422,9 +1422,10 @@ def view_project(id: str):
             return
         for rid, d in (STORE.get(coll) or {}).items():
             if str(d.get("boq_id") or "") not in _proj_boq_ids:
-                # `own_project` (17 Nov 2026, §0 seventy-fifth block): a
-                # delivery challan raised WITHOUT a BOQ is listed on the
-                # project its own `project_id` names.
+                # `own_project` (17 Nov 2026, §0 seventy-fifth and
+                # seventy-sixth blocks): a delivery challan or a product
+                # inquiry raised WITHOUT a BOQ is listed on the project its
+                # own `project_id` names.
                 if not (own_project and not d.get("boq_id")
                         and str(d.get("project_id") or "") == id):
                     continue
@@ -1443,7 +1444,10 @@ def view_project(id: str):
     _raised_add("challan.view_dc", lambda i: url_for("challan.view_dc", id=i), "Delivery challan", "delivery_challans", "ref",
                 own_project=True)
     _raised_add("measurement.view_ms", lambda i: url_for("measurement.view_ms", id=i), "Measurement sheet", "measurements", "ref")
-    _raised_add("po_draft.view_po", lambda i: url_for("po_draft.view_po", id=i), "Product inquiry", "purchase_orders", "ref")
+    # `own_project` (17 Nov 2026, §0 seventy-sixth block): a product inquiry
+    # raised WITHOUT a BOQ is listed on the project its own `project_id` names.
+    _raised_add("po_draft.view_po", lambda i: url_for("po_draft.view_po", id=i), "Product inquiry", "purchase_orders", "ref",
+                own_project=True)
     # Receipts (31 Oct 2026, C2) — money received against an RA bill raised
     # from one of these BOQs. A receipt carries no `boq_id` of its own; it is
     # resolved at read time through its bill (`ra_id`), and nothing is
