@@ -24,6 +24,7 @@ property they exist to protect.
 """
 
 import copy
+import json
 import random
 
 import pytest
@@ -417,6 +418,20 @@ def test_an_overclaim_that_used_to_be_waved_through_is_now_caught(
     # The message still names the item number, because that is what is written
     # on the measurement sheet in the operator's hand.
     assert f"Item {item_no}" in ra.overclaim_message(breaches[0])
+
+    # ⚠ 17 Nov 2026, §0 eighty-first block: what CATCHING it means changed
+    #   from BLOCKED to WARNED + SAVED WITH A REASON. The detector above is
+    #   unchanged; the save path refuses it without a reason and takes it with
+    #   one, and the warning row is keyed on `line_id`, never `item_no`.
+    raw = json.dumps({"lines": [{"line_id": li["line_id"], "qty": str(over),
+                                 "rate": str(li["supply_rate"])}]})
+    got, _r, err = ra._validate(raw, boq, "supply", {})
+    assert got == [] and err
+    rows = []
+    got, _r, err = ra._validate(raw, boq, "supply", {}, excess_reason="Site.",
+                                excess_out=rows)
+    assert err == "" and len(got) == 1
+    assert [(r["line_id"], r["over"]) for r in rows] == [(li["line_id"], pytest.approx(1.0))]
 
 
 def test_shuffling_the_boq_line_order_changes_no_guard_verdict(seeded):

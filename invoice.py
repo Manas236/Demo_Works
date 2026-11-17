@@ -72,6 +72,7 @@ import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import docnum as DN    # the MANUAL document number, forward only (27 Oct 2026)
 import tinum as TN     # the tax invoice number as Tally gave it — the leaf (17 Nov 2026)
+import boqexcess as BX  # billing above the BOQ quantity, with a reason — the leaf (17 Nov 2026)
 import docsheet as DS
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import roundoff as RO  # the rupee round-off tick and the paisa (31 Oct 2026)
@@ -1317,6 +1318,7 @@ def from_boq(boq_id: str):
     seq_used = 0
     # A Resume (formdraft.py, §0 sixty-fourth block, Part 4) only REDRAWS.
     resuming = is_post and FD.is_resume(f)
+    excess, excess_reason = [], (BX.read_reason(f) if is_post else "")
 
     if is_post and not resuming:
         ti_date = (f.get("date") or "").strip()
@@ -1348,6 +1350,14 @@ def from_boq(boq_id: str):
             if adv > grand:
                 error = (f"Advance received (₹{adv:,.2f}) is more than the invoice "
                          f"value (₹{grand:,.2f}).")
+
+        # Above the BOQ quantity (17 Nov 2026, §0 81st block): allowed, never
+        # silent. Cumulative over this chain's live BOQ tax invoices, derived
+        # by summing on `line_id`; one reason for the invoice, or refused.
+        if not error and not resuming:
+            excess = BX.ti_excess(boq, boq_chain(boq_id), items)
+            if excess and not excess_reason:
+                error = BX.refusal(excess)
 
         # ⚠ Same series, same ledger, same scan as the PI-raised invoice
         #   above — a TI raised from a BOQ is an ORDINARY tax invoice in its
@@ -1419,6 +1429,7 @@ def from_boq(boq_id: str):
                 "company_branch": boq.get("company_branch", ""),
                 "auth_signatory": boq.get("auth_signatory", ""),
             }
+            BX.stamp(ti, excess, excess_reason)
             STORE["invoices"][iid] = ti
             # B6 — the creator, captured at the write site. See approval.py.
             approval.stamp_creator(ti)
@@ -1641,7 +1652,7 @@ def from_boq(boq_id: str):
           </div>
         </div>
 {boq_grid(boq, chosen, qty_of, "ti_json", "tax invoice")}
-        <div class="form-actions">
+        {BX.warning_html(excess, excess_reason)}<div class="form-actions">
           <button type="submit" class="btn">Raise Tax Invoice</button>
           <a href="{back}" class="btn btn-ghost">Cancel</a>
         </div>
@@ -1721,6 +1732,12 @@ def edit_invoice(id: str):
     error = ""
     default_gst = _PF.LE.uniform_gst(ti.get("tax_type", "exempt"), ti.get("tax_info") or {})
     stored = list(ti.get("line_items") or [])
+    # Above the BOQ quantity (17 Nov 2026, §0 81st block) — a tax invoice
+    # raised from a BOQ keeps the rule when its lines are edited, or creating
+    # it and then editing it would walk round the warning.
+    excess = list(ti.get(BX.LINES_KEY) or [])
+    excess_reason = (BX.read_reason(f) if request.method == "POST"
+                     else str(ti.get(BX.REASON_KEY) or ""))
     head_keys = ("date", "place_of_supply", "po_number", "po_date", "dispatch_through",
                  "dispatch_doc_no", "vehicle_no", "eway_bill_no", "payment_terms", "notes")
     if is_post:
@@ -1756,6 +1773,12 @@ def edit_invoice(id: str):
             if adv > grand:
                 error = (f"Advance received (₹{adv:,.2f}) is more than the invoice "
                          f"value (₹{grand:,.2f}).")
+        if not error and ti.get("boq_id") and not ti.get("proforma_id"):
+            boq_src = (STORE.get("boqs") or {}).get(str(ti.get("boq_id")))
+            excess = (BX.ti_excess(boq_src, BQ.chain_ids(str(ti.get("boq_id"))),
+                                   lines, exclude_id=id) if boq_src else [])
+            if excess and not excess_reason:
+                error = BX.refusal(excess)
         if not error:
             before, before_lines = dict(ti), [dict(r) for r in stored]
             ti.update(v)
@@ -1768,6 +1791,8 @@ def edit_invoice(id: str):
                 RO.FIELD: round_on, "total_qty": total_qty,
                 "advance_received": adv, "net_payable": round(grand - adv, 2),
             })
+            if ti.get("boq_id") and not ti.get("proforma_id"):
+                BX.stamp(ti, excess, excess_reason)
             changes = (_PF.EL.diff(before, ti, TI_EDIT_FIELDS)
                        + _PF.EL.line_diff(before_lines, lines, default_gst))
             _PF.EL.record(ti, changes, _actor_id())
@@ -1854,7 +1879,7 @@ def edit_invoice(id: str):
                               sources=_ti_parent_sources(ti, default_gst))}
           {RO.checkbox_html(round_shown)}
         </div>
-        <div class="form-actions">
+        {BX.warning_html(excess, excess_reason)}<div class="form-actions">
           <button type="submit" class="btn">Save changes</button>
           <a href="{view_url}" class="btn btn-ghost">Cancel</a>
         </div>
@@ -2191,7 +2216,8 @@ def view_invoice(id: str):
     edit_bands = (_PF.divergence_band(_PF.ti_divergence(pi_src, ti), "proforma",
                                       "tax invoice", ti.get("ref"))
                   if pi_src else "")
-    edit_bands = _PF.EL.band(ti, "tax invoice") + TN.history_html(ti) + edit_bands
+    edit_bands = (_PF.EL.band(ti, "tax invoice") + TN.history_html(ti)
+                  + BX.band_html(ti) + edit_bands)
     # The Edit button — for whoever the gate admits, on an invoice that may
     # still be edited. The newline lives inside the string.
     edit_btn = ""

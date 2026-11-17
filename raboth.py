@@ -89,6 +89,7 @@ import pipeline as P
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import ra as RA
 import roundoff as RO
+import boqexcess as BX  # billing above the BOQ quantity, with a reason — the leaf (17 Nov 2026)
 from chrome import BASE_STYLES, _nav
 from quotation import QUOTATION_STYLES
 from store import STORE
@@ -197,7 +198,8 @@ def _rollback(written_ids: list) -> None:
 
 def create_set(boq: dict, supply_claims: list, install_claims: list,
                date_val: str, notes_val: str = "", round_on: bool = True,
-               ti_seq: int = None, **fields) -> tuple:
+               ti_seq: int = None, excess: dict = None,
+               excess_reason: str = "", **fields) -> tuple:
     """
     `(merged, error)` — write both legs and the merged document, atomically.
 
@@ -223,6 +225,9 @@ def create_set(boq: dict, supply_claims: list, install_claims: list,
                                 tax_invoice_ref=RA.NO_TAX_INVOICE,
                                 round_on=False, **fields)
             rec[BOTH_KEY] = sid
+            # Above the BOQ quantity (§0 81st block): each leg carries its own
+            # rows and the set's one reason; a leg within it carries no key.
+            BX.stamp(rec, (excess or {}).get(leg) or [], excess_reason)
             STORE.setdefault("ra_bills", {})[rid] = rec
             approval.stamp_creator(rec)
             # Issued immediately: `merged_ra.can_merge()` refuses a draft and
@@ -388,17 +393,21 @@ def create_both():
     today = _date.today().isoformat()
     error, entered = "", {"supply": {}, "installation": {}}
     date_val, notes_val = today, ""
+    # Above the BOQ quantity (§0 81st block): ONE reason for the whole set.
+    excess, excess_reason = {"supply": [], "installation": []}, ""
 
     if request.method == "POST":
         date_val = (request.form.get("date") or today).strip()
         notes_val = (request.form.get("notes") or "").strip()
+        excess_reason = BX.read_reason(request.form)
 
         # ── STEP 1: VALIDATE BOTH LEGS BEFORE WRITING ANYTHING ─────────────
         claims = {}
         for leg in LEGS:
             prev = RA.claimed_by_line(boq_id)
             got, raw_lines, err = RA._validate(
-                _payload(request.form, leg), boq, leg, prev)
+                _payload(request.form, leg), boq, leg, prev,
+                excess_reason=excess_reason, excess_out=excess[leg])
             entered[leg] = RA._posted(raw_lines)
             if err and not error:
                 # ⚠ **BOTH LEGS MUST CLAIM SOMETHING, and that falls out of
@@ -438,7 +447,7 @@ def create_both():
                 cgst_rate=float(BQ._num(request.form.get("cgst_rate"), 9.0)),
                 sgst_rate=float(BQ._num(request.form.get("sgst_rate"), 9.0)),
                 igst_rate=float(BQ._num(request.form.get("igst_rate"), 18.0)),
-                ti_seq=_ti_seq)
+                ti_seq=_ti_seq, excess=excess, excess_reason=excess_reason)
             if err:
                 error = err
             else:
@@ -450,10 +459,12 @@ def create_both():
                          f"its own.")))
 
     prev = RA.claimed_by_line(boq_id)
-    return _form(boq, prev, entered, error, date_val, notes_val)
+    return _form(boq, prev, entered, error, date_val, notes_val,
+                 excess_html=BX.warning_html(excess["supply"] + excess["installation"],
+                                             excess_reason))
 
 
-def _form(boq, prev, entered, error, date_val, notes_val) -> str:
+def _form(boq, prev, entered, error, date_val, notes_val, excess_html: str = "") -> str:
     boq_id = str(boq.get("id") or "")
     return f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -502,7 +513,7 @@ def _form(boq, prev, entered, error, date_val, notes_val) -> str:
       <div class="section-title">&#128295; Installation</div>
       {_grid(boq, "installation", prev, entered.get("installation") or {})}
     </div>
-    <div class="form-actions">
+    {excess_html}<div class="form-actions">
       <button type="submit" class="btn">Raise both and merge</button>
       <a href="{url_for('boq.view_boq', id=boq_id)}" class="btn btn-ghost">Cancel</a>
     </div>

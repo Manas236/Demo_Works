@@ -105,6 +105,7 @@ import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 import tinum as TN     # the tax invoice number as Tally gave it — the leaf (17 Nov 2026)
+import boqexcess as BX  # billing above the BOQ quantity, with a reason — the leaf (17 Nov 2026)
 import ra as RA
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
 from quotation import QUOTATION_STYLES, _inr, _meta
@@ -263,6 +264,16 @@ def merges_of(ra_id: str) -> list:
     return [m for m in records().values()
             if ra_id in (str(m.get("supply_ra_id") or ""),
                          str(m.get("installation_ra_id") or ""))]
+
+
+def _excess_band(*bills) -> str:
+    """
+    Billed above BOQ (17 Nov 2026, §0 81st block) — the two LEGS' stored
+    snapshots, screen only. The merged record holds no claims of its own, so
+    it holds no excess either; "" when neither leg carries one.
+    """
+    return BX.band_html([(f"RA{int(b.get('ra_no') or 0)} {_esc(b.get('leg'))}", b)
+                         for b in bills if b])
 
 
 def legs_of(doc) -> tuple:
@@ -990,7 +1001,7 @@ def view_merged(id: str):
           {edit_bit}{cancel_bit}
         </div>
       </div>
-      {_EL.band(doc, "tax invoice")}{TN.history_html(doc)}
+      {_EL.band(doc, "tax invoice")}{TN.history_html(doc)}{_excess_band(supply_bill, install_bill)}
       {approval.panel("merged_ra", doc)}
       <div class="form-section">
         <div class="section-title">&#128279; The two bills this covers</div>

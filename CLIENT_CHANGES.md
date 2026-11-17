@@ -7451,6 +7451,54 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 17 November 2026, by Manas Gawde — BILLING ABOVE THE BOQ QUANTITY ON RA AND TI · NO CHARGE · POST-GO-LIVE PROD HOTFIX 6
+>
+> **A new block, not an amendment.** The **eighty-first** occasion, written
+> directly on `samruddhi-prod` from `a359d30` (then 7 ahead / 5 behind origin,
+> nothing pulled). Recorded **"authorised, no charge"** on Manas's written
+> brief: *billing above BOQ quantity is normal in their trade (site
+> measurement exceeds BOQ). It must be allowed, never silent.*
+>
+> **Diagnosis — which guard fired.** One: `ra.overclaims()` reason
+> `"overclaim"` (cumulative claim vs the approved BOQ quantity,
+> `OVERCLAIM_TOLERANCE` 0.0), reached through `ra._validate()` on `/ra/create`,
+> `/ra/edit` and `/raboth/create`. **Not** the dispatched cap
+> (`dc_overclaims()`, only on a bill raised from challans), **not** the
+> measurement cap (`"overmeasured"` / `"not_measured"`, only with an approved
+> sheet on the chain), **not** an amount check. `/merged/create` (pairing two
+> existing bills) has no quantity check. **The TI-from-BOQ path had NO
+> quantity check at all** — it billed above the BOQ silently.
+>
+> **What was built** (`boqexcess.py`, a leaf): the BOQ-quantity ceiling is a
+> WARNING. A line whose cumulative claim passes its BOQ quantity draws an
+> amber per-line table (BOQ qty, already claimed, this claim, excess) and ONE
+> reason box for the bill; blank is refused with a message. Saved, the bill
+> carries `excess_lines` `[{line_id, item_no, leg, boq_qty, previously, this,
+> cumulative_after, excess}]` and `excess_reason`, snapshotted at save, never
+> recomputed; a bill within its schedule carries neither key. A screen-only
+> amber "Billed above BOQ" band on `/ra/view`, `/merged/view` (from the legs'
+> snapshots), `/invoice/view` and `/boq/view`. Prints unchanged. No permission
+> change, no new endpoint.
+>
+> **Judgement calls, declared:**
+> 1. **`ra.overclaims()` is unchanged** — it is still the detector; only
+>    `_validate()` decides which reasons are soft. The measurement cap, a line
+>    not in the schedule and the dispatched cap stay HARD, reason or none.
+> 2. **TI-from-BOQ gained the warning** (it had no guard): cumulative over the
+>    chain's LIVE BOQ tax invoices only, summed on `line_id`. RA bills are
+>    **not** added in — §7 gap 78 is unchanged. The TI **edit** carries the
+>    same rule for a BOQ invoice, so create-then-edit cannot walk round it.
+> 3. **The snapshot carries `item_no`, `leg`, `previously` and `this`** besides
+>    the four named fields — labels for the band; nothing keys on `item_no`.
+> 4. **The merged set takes ONE reason** and stamps it on each leg that is
+>    above; the merged record stores nothing (it holds no claims).
+> 5. **A draft edit re-snapshots** at its save (the prior reason is
+>    prefilled); edited back within the schedule, both keys are removed.
+> 6. **The form's cap hint keeps its words** and adds one sentence saying
+>    billing above is allowed with a reason.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

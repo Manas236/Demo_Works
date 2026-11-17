@@ -71,6 +71,7 @@ import pipeline as P
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import docnum as DN    # the typed RA number, forward only per BOQ chain (31 Oct 2026)
 import tinum as TN     # the tax invoice number as Tally gave it — the leaf (17 Nov 2026)
+import boqexcess as BX  # billing above the BOQ quantity, with a reason — the leaf (17 Nov 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 # "Is this challan billed, and by which bill?" — ONE predicate, in a leaf both
 # this module and `challan.py` import, because neither may import the other
@@ -2036,6 +2037,12 @@ def c1_prerequisite_on() -> bool:
     return bool(C1_PREREQUISITE)
 
 
+# The BOQ-quantity cap is a WARNING since 17 Nov 2026 (§0 81st block,
+# boqexcess.py): a claim above it is saved with one reason for the bill.
+_ABOVE_BOQ_HINT = (" Billing above the BOQ quantity is allowed: the form asks "
+                   "for one reason and the bill is marked on screen.")
+
+
 def cap_note_html(boq_id: str, leg: str) -> str:
     """
     **WHICH CEILING THIS CLAIM IS MEASURED AGAINST** — one line above the
@@ -2068,13 +2075,13 @@ def cap_note_html(boq_id: str, leg: str) -> str:
                 '&#9432;&nbsp;<b>This claim is capped at the BOQ quantity.</b> '
                 'No approved measurement sheet exists on this schedule yet. '
                 'Raise one and the cap becomes the measured quantity instead, '
-                'for every line.</div>')
+                'for every line.' + _ABOVE_BOQ_HINT + '</div>')
     return ('<div class="form-hint" style="margin:.6rem 0;">'
             '&#9432;&nbsp;<b>This claim is capped at the BOQ quantity</b>, '
             'cumulatively across every bill on this schedule. Delivery '
             'challans do not cap a supply claim &mdash; if you raise the bill '
             'from ticked challans, their dispatched quantity caps it as '
-            'well.</div>')
+            'well.' + _ABOVE_BOQ_HINT + '</div>')
 
 
 def _c1_refusal(boq_id: str, leg: str):
@@ -3977,7 +3984,8 @@ def build_bill(rid: str, boq: dict, leg: str, claims: list, date_val: str,
 
 
 def _validate(raw: str, boq: dict, leg: str, prev: dict,
-              exclude_ra_id: str = None, dc_caps: dict = None) -> tuple:
+              exclude_ra_id: str = None, dc_caps: dict = None,
+              excess_reason: str = None, excess_out: list = None) -> tuple:
     """
     (claims, error) — parse, clean and run the block. One path for create and edit.
 
@@ -4015,11 +4023,26 @@ def _validate(raw: str, boq: dict, leg: str, prev: dict,
     # because "line 24.d is over" is not something anybody can act on.
     breaches = overclaims(str(boq.get("id") or ""), leg, claims,
                           exclude_ra_id=exclude_ra_id)
-    if breaches:
+    # ⚠ 17 Nov 2026, §0 EIGHTY-FIRST block (boqexcess.py): the BOQ-QUANTITY
+    #   ceiling (reason "overclaim") is a WARNING that needs one reason for
+    #   the bill; every other reason — the measurement cap, a line not in the
+    #   schedule — is still the hard block, word for word. `excess_out`, when
+    #   given, receives the above-BOQ rows so the caller can draw the amber
+    #   warning and stamp the snapshot.
+    hard = [v for v in breaches if v["reason"] != "overclaim"]
+    soft = [v for v in breaches if v["reason"] == "overclaim"]
+    if excess_out is not None:
+        excess_out[:] = soft
+    if hard:
         msg = " ".join(overclaim_message(v) for v in breaches[:4])
         if len(breaches) > 4:
             msg += f" ({len(breaches) - 4} more not shown.)"
         return [], raw_lines, msg
+    if soft and not str(excess_reason or "").strip():
+        msg = " ".join(overclaim_message(v) for v in soft[:4])
+        if len(soft) > 4:
+            msg += f" ({len(soft) - 4} more not shown.)"
+        return [], raw_lines, BX.refusal(soft) + " " + msg
 
     return claims, raw_lines, ""
 
@@ -4652,8 +4675,11 @@ def create_ra(imported: dict = None):
     if request.method == "POST":
         date_val = (request.form.get("date") or today).strip()
         notes_val = (request.form.get("notes") or "").strip()
+        excess_reason = BX.read_reason(request.form)
+        excess = []
         claims, raw_lines, error = _validate(
-            request.form.get("ra_json", ""), boq, leg, prev, dc_caps=dc_caps)
+            request.form.get("ra_json", ""), boq, leg, prev, dc_caps=dc_caps,
+            excess_reason=excess_reason, excess_out=excess)
         entered = _posted(raw_lines)
         # RULING C — a POST naming a challan that may not be billed here is
         # refused, and the message names the bill that holds it.
@@ -4702,6 +4728,9 @@ def create_ra(imported: dict = None):
                 sgst_rate=sgst_rate, igst_rate=igst_rate,
                 round_on=_RO().form_choice(request.form, legacy=True),
                 ra_no=typed_ra_no)
+            # Above the BOQ quantity (§0 81st block): the snapshot, only when
+            # there is one — a bill within its schedule carries no new key.
+            BX.stamp(STORE["ra_bills"][rid], excess, excess_reason)
             DN.note_ra_no(_chain_key(boq_id), typed_ra_no)
             # 4 Oct 2026 — WHERE THE BILL WAS RAISED FROM, written ONCE, here,
             # and never by `edit_ra()`. Only on a bill raised from challans or
@@ -4755,6 +4784,8 @@ def create_ra(imported: dict = None):
                          if request.method == "POST" else "")
         + "</div>"
         + _ti_box((request.form.get(TN.FIELD) or "") if request.method == "POST" else ""))
+    if request.method == "POST":
+        hidden_html += BX.warning_html(excess, excess_reason)
     return _entry_form(
         boq, leg, prev, entered, error,
         action=url_for("ra.create_ra", boq=boq_id, leg=leg),
@@ -4945,13 +4976,18 @@ def edit_ra(id: str):
                for c in bill.get("claims") or [] if c.get("line_id")}
     date_val = bill.get("date", "")
     notes_val = bill.get("notes", "")
+    # Above the BOQ quantity (§0 81st block): a bill saved so reopens with its
+    # warning and its reason, re-snapshotted on this save.
+    excess = list(bill.get(BX.LINES_KEY) or [])
+    excess_reason = str(bill.get(BX.REASON_KEY) or "")
 
     if request.method == "POST":
         date_val = (request.form.get("date") or date_val).strip()
         notes_val = (request.form.get("notes") or "").strip()
+        excess_reason = BX.read_reason(request.form)
         claims, raw_lines, error = _validate(
             request.form.get("ra_json", ""), boq, leg, prev, exclude_ra_id=id,
-            dc_caps=dc_caps)
+            dc_caps=dc_caps, excess_reason=excess_reason, excess_out=excess)
         entered = _posted(raw_lines)
 
         # The RA number on EDIT, forward only (2 Nov 2026, Part 4): its own
@@ -5014,6 +5050,7 @@ def edit_ra(id: str):
             bill["tax_slabs"] = tax_info["tax_slabs"]
             bill["rounding_off"] = tax_info["rounding_off"]
             bill["grand_total"] = tax_info["grand_total"]
+            BX.stamp(bill, excess, excess_reason)
             TN.keep_counter("RI", str(bill.get("fy") or ""),
                             lambda: bill.__setitem__("tax_invoice_ref", tax_invoice_ref))
             bill["po_ref"] = po_ref
@@ -5040,7 +5077,8 @@ def edit_ra(id: str):
                          if request.method == "POST" else "")
         + "</div>"
         + _ti_box((request.form.get(TN.FIELD) if request.method == "POST"
-                   else None) or str(bill.get("tax_invoice_ref") or ""), bill))
+                   else None) or str(bill.get("tax_invoice_ref") or ""), bill)
+        + BX.warning_html(excess, excess_reason))
     return _entry_form(
         boq, leg, prev, entered, error,
         action=url_for("ra.edit_ra", id=id),
@@ -5266,7 +5304,7 @@ def view_ra(id: str):
     </div>
   </div>
   {_flash()}
-  {HF.NOTE_CSS if hsn_note else ""}{hsn_note}{_ra_editlog().band(bill, "tax invoice")}{TN.history_html(bill)}
+  {HF.NOTE_CSS if hsn_note else ""}{hsn_note}{_ra_editlog().band(bill, "tax invoice")}{TN.history_html(bill)}{BX.band_html(bill)}
   {cancelled_html}
   {lock_html}
   {rate_note}

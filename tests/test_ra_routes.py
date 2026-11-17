@@ -267,6 +267,17 @@ def test_an_overclaim_is_blocked_with_the_whole_arithmetic(client, seeded):
     assert f'Item {li["item_no"]}' in h
     assert "approved" in h and "over" in h
 
+    # ⚠ 17 Nov 2026, §0 eighty-first block: BLOCKED -> WARNED + SAVED WITH A
+    #   REASON. Without a reason it is still refused (above); with one, saved.
+    r = client.post(f"/ra/create?boq={seeded}&leg=supply", data={
+        "date": "2026-08-06", "excess_reason": "Site measured more.",
+        "ra_json": payload([(li["line_id"], li["total_qty"] + 3, li["supply_rate"])]),
+    })
+    assert r.status_code == 302
+    [bill] = STORE["ra_bills"].values()
+    assert bill["excess_lines"][0]["line_id"] == li["line_id"]
+    assert bill["excess_lines"][0]["excess"] == pytest.approx(3.0)
+
 
 def test_the_block_is_cumulative_across_bills_not_per_bill(client, seeded):
     """

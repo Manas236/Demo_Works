@@ -83,6 +83,7 @@ import pipeline as P
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import roundoff as RO  # the paisa and the rupee round-off tick, the leaf (31 Oct 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
+import boqexcess as BX  # billing above the BOQ quantity, with a reason — the leaf (17 Nov 2026)
 import units as _UN   # the shared unit list — the leaf (29 Oct 2026)
 from address import INDIAN_STATES, picker_options, picker_payload
 from chrome import BASE_STYLES, TABLE_FIT_STYLES, _nav
@@ -3715,7 +3716,7 @@ def view_boq(id: str):
   </div>
 </div>
 {raise_html}
-{alert_html}{_editlog_band(boq)}
+{alert_html}{_editlog_band(boq)}{BX.boq_band_html(chain_ids(id))}
 {panel_html}
 {unpriced_html}
 {hsn_note}
