@@ -122,6 +122,7 @@ import editlog as EL   # the edit-after-issue log — the leaf (31 Oct 2026)
 import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31 Oct 2026)
 import docsheet as DS
 import pipeline as P
+import dcqty as DQ   # Qty (Mtr) and Qty (Nos) — the leaf (17 Nov 2026)
 import settings as SET
 from address import picker_options, format_address_lines, CONSIGNEE_TYPES
 from chrome import BASE_STYLES, _nav
@@ -375,7 +376,8 @@ def dispatched_by_line(boq_id: str, exclude_id: str = "") -> dict:
             lid = BQ._line_id(row.get("line_id"))
             if not lid:
                 continue
-            out[lid] = out.get(lid, 0.0) + float(row.get("qty") or 0.0)
+            # The quantity in the line's OWN unit (17 Nov 2026, dcqty.py).
+            out[lid] = out.get(lid, 0.0) + DQ.billing_qty(row)
     return out
 
 
@@ -408,7 +410,7 @@ def over_dispatched(dc: dict) -> list:
         lid = BQ._line_id(row.get("line_id"))
         if not lid or lid not in approved:
             continue
-        total = others.get(lid, 0.0) + float(row.get("qty") or 0.0)
+        total = others.get(lid, 0.0) + DQ.billing_qty(row)
         # Rounded at `P.QTY_EPSILON` for `ra.py`'s reason: 1.1 + 2.2 + 8.7 is
         # 12.000000000000002, and that is not an over-dispatch of two
         # femtometres against an approved 12.
@@ -545,7 +547,8 @@ def parse_extras(form, with_ref: bool = False, allowed_refs=None) -> tuple:
     `with_ref` (17 Nov 2026): a challan raised from a purchase order carries
     each row's order line (`po_key`) through an edit; `allowed_refs` is that
     order's own keys."""
-    return EX.parse_extras(form, with_ref=with_ref, allowed_refs=allowed_refs)
+    return EX.parse_extras(form, with_ref=with_ref, allowed_refs=allowed_refs,
+                           two_qty=True)
 
 
 def _extra_row_html(desc="", qty="", unit="", pick="", spec=None) -> str:
@@ -557,7 +560,7 @@ def _extras_section_html(stored: list = None, posted=None,
                          with_ref: bool = False) -> str:
     """The *Extra items* section — `extraitems.extras_section_html()`."""
     return EX.extras_section_html(stored, posted, fmt_qty=BQ._fmt_qty,
-                                  with_ref=with_ref)
+                                  with_ref=with_ref, two_qty=True)
 
 
 # =============================================================================
@@ -606,7 +609,7 @@ function dcPoWarn(box) {
   var left = parseFloat(box.getAttribute('data-left')), n = parseFloat(box.value);
   if (w) w.style.display = (!isNaN(n) && !isNaN(left) && n > left) ? 'inline' : 'none';
 }
-document.querySelectorAll('input[name="pl_qty"]').forEach(function (b) { dcPoWarn(b); });
+document.querySelectorAll('input[data-left]').forEach(function (b) { dcPoWarn(b); });
 </script>"""
 
 
@@ -621,7 +624,12 @@ def _po_picker_html(po: dict, data: dict) -> str:
         k = r["key"]
         left = max(r["qty"] - sent.get(k, 0.0), 0.0)
         qty = qty_of.get(k)
-        qty_txt = BQ._fmt_qty(left) if qty is None else str(qty)
+        if qty is None:
+            mtr_txt, nos_txt = (DQ.fmt(v) if v is not None else ""
+                                for v in DQ.split(left, r["unit"]))
+        else:
+            mtr_txt, nos_txt = str(qty.get("mtr") or ""), str(qty.get("nos") or "")
+        own_mtr = DQ.unit_class(r["unit"]) == "mtr"
         checked = " checked" if (on is None or k in on) else ""
         tag = ("BOQ line" if r["kind"] == "boq" else
                "extra line" if r["kind"] == "extra" else "order line")
@@ -635,14 +643,17 @@ def _po_picker_html(po: dict, data: dict) -> str:
             <td>{P.esc(r["unit"])}</td>
             <td style="text-align:right;">{BQ._fmt_qty(r["qty"])}</td>
             <td style="text-align:right;">{BQ._fmt_qty(sent.get(k, 0.0))}</td>
-            <td style="text-align:right;"><input type="text" name="pl_qty" value="{P.esc(qty_txt)}"
-                 inputmode="decimal" data-left="{left:g}" oninput="dcPoWarn(this)"
-                 aria-label="Dispatch quantity" style="width:6rem;text-align:right;"/>
+            <td style="text-align:right;"><input type="text" name="pl_qty_mtr" value="{P.esc(mtr_txt)}"
+                 inputmode="decimal"{f' data-left="{left:g}" oninput="dcPoWarn(this)"' if own_mtr else ""}
+                 aria-label="Quantity in metres" style="width:6rem;text-align:right;"/></td>
+            <td style="text-align:right;"><input type="text" name="pl_qty_nos" value="{P.esc(nos_txt)}"
+                 inputmode="decimal"{"" if own_mtr else f' data-left="{left:g}" oninput="dcPoWarn(this)"'}
+                 aria-label="Quantity in numbers" style="width:6rem;text-align:right;"/>
               <span class="po-over" style="display:none;color:#9a6700;font-size:.75rem;">
-                above the {BQ._fmt_qty(left)} left &mdash; saved anyway</span></td>
+                above the {BQ._fmt_qty(left)} {P.esc(r["unit"])} left &mdash; saved anyway</span></td>
           </tr>"""
     if not body:
-        body = ('<tr><td colspan="7" style="color:var(--muted);">This purchase '
+        body = ('<tr><td colspan="8" style="color:var(--muted);">This purchase '
                 'order has no lines.</td></tr>')
     return f"""
     <div class="form-section">
@@ -659,7 +670,8 @@ def _po_picker_html(po: dict, data: dict) -> str:
         <thead><tr style="text-align:left;font-size:.7rem;text-transform:uppercase;color:var(--muted);">
           <th></th><th>Item</th><th>Description</th><th>Unit</th>
           <th style="text-align:right;">Ordered</th><th style="text-align:right;">Sent</th>
-          <th style="text-align:right;">Dispatch qty</th></tr></thead>
+          <th style="text-align:right;">Qty (Mtr)</th>
+          <th style="text-align:right;">Qty (Nos)</th></tr></thead>
         <tbody>{body}
         </tbody>
       </table>
@@ -677,29 +689,41 @@ def _po_picks(form, po: dict) -> tuple:
     keys = form.getlist("pl_key")
     qtys = form.getlist("pl_qty")
     on = set(form.getlist("pl_on"))
-    posted_qty = {k: (qtys[i] if i < len(qtys) else "") for i, k in enumerate(keys)}
+    # The two columns (17 Nov 2026, §0 eighty-second block, dcqty.py). A POST
+    # carrying only `pl_qty` (an older page) is placed by each line's unit.
+    mtrs, noses = form.getlist("pl_qty_mtr"), form.getlist("pl_qty_nos")
+    two = bool(mtrs or noses)
     by_key = {r["key"]: r for r in DCPO.lines_of(po)}
+    if two:
+        posted_qty = {k: {"mtr": mtrs[i] if i < len(mtrs) else "",
+                          "nos": noses[i] if i < len(noses) else ""}
+                      for i, k in enumerate(keys)}
+    else:
+        posted_qty = {}
+        for i, k in enumerate(keys):
+            raw = qtys[i] if i < len(qtys) else ""
+            unit = (by_key.get(k) or {}).get("unit")
+            posted_qty[k] = ({"mtr": raw, "nos": ""} if DQ.unit_class(unit) == "mtr"
+                             else {"mtr": "", "nos": raw})
     boq_lines, others = [], []
     for k in keys:
         if k not in on or k not in by_key:
             continue
         r = by_key[k]
-        raw = str(posted_qty.get(k) or "").strip()
-        try:
-            q = float(raw)
-        except ValueError:
-            return "", [], on, posted_qty, (f"Quantity for '{r['description'][:60]}' "
-                                            f"must be a number above 0.")
-        if not q > 0:
-            return "", [], on, posted_qty, (f"Quantity for '{r['description'][:60]}' "
-                                            f"must be above 0.")
+        pair = posted_qty.get(k) or {}
+        mtr, nos, err = DQ.parse_pair(pair.get("mtr"), pair.get("nos"),
+                                      r["description"][:60])
+        if err:
+            return "", [], on, posted_qty, err
         if r["kind"] == "boq":
-            boq_lines.append({"line_id": r["line_id"], "qty": f"{q:g}"})
+            boq_lines.append({"line_id": r["line_id"],
+                              "qty_mtr": "" if mtr is None else f"{mtr:g}",
+                              "qty_nos": "" if nos is None else f"{nos:g}"})
         else:
             row = {"line_id": None, "extra": True, "is_header": False,
                    "item_no": r["item_no"], "description": r["description"][:500],
-                   "unit": r["unit"][:30], "qty": q, "source": "po", "po_key": k}
-            others.append(row)
+                   "unit": r["unit"][:30], "qty": 0.0, "source": "po", "po_key": k}
+            others.append(DQ.stamp(row, mtr, nos))
     if not boq_lines and not others:
         return "", [], on, posted_qty, PO_NOTHING_TICKED
     return json.dumps({"lines": boq_lines}), others, on, posted_qty, ""
@@ -768,9 +792,27 @@ def picked_lines(raw: str, boq: dict) -> tuple:
     their purchase order (DOMAIN.md §5.2) and nothing on their challan.
     """
     return BP.picked_lines(
-        raw, boq, with_pcs=False, max_lines=MAX_DC_LINES,
+        raw, boq, with_pcs=False, max_lines=MAX_DC_LINES, two_qty=True,
         empty_msg=EMPTY_PICK_MSG,
         cap_msg="Raise more than one challan.")
+
+
+def _posted_qty(posted: list) -> dict:
+    """
+    A rejected POST's boxes, handed back as typed: `{lid: {"mtr", "nos"}}` for
+    a row that posted the two columns, else its one `qty` (placed by unit).
+    """
+    out = {}
+    for r in posted or []:
+        if not isinstance(r, dict):
+            continue
+        lid = BQ._line_id(r.get("line_id"))
+        if "qty_mtr" in r or "qty_nos" in r:
+            out[lid] = {"mtr": str(r.get("qty_mtr") or ""),
+                        "nos": str(r.get("qty_nos") or "")}
+        else:
+            out[lid] = r.get("qty")
+    return out
 
 
 def _with_extras(boq_items, boq_err: str, extras: list) -> tuple:
@@ -1048,7 +1090,8 @@ def _entry_form(boq: dict, data: dict, error: str = "",
             doc_word="challan",
             chosen=data.get("_chosen"),
             qty_of=data.get("_qty"),
-            with_pcs=False)
+            with_pcs=False,
+            two_qty=True)
 
     # Extra items — every challan, create and edit. Not drawn while the lines
     # are locked (billed): the stored extras then stay exactly as they are.
@@ -1166,12 +1209,18 @@ def _entry_form(boq: dict, data: dict, error: str = "",
 # THE DOCUMENT
 # =============================================================================
 
-# Four columns, and nothing else — their DC54's table exactly. There is no
+# Five columns (four until 17 Nov 2026, their DC54) and nothing else. There is no
 # Part No, no HSN, no Rate and no Amount, because none of them belongs on a
 # goods-movement note. `docsheet.SELL_COLUMNS` is the eight-column set the sell
 # and buy chains share; this is deliberately not it.
+#
+# ⚠ FIVE from 17 November 2026 (§0 eighty-second block, `dcqty.py`): their
+#   paper DC 63 reads Sr.No | Description | Qty (Mtr) | Qty (Nos) | Unit. Both
+#   quantity columns wear the sheet's own `c-qty` class, so they carry the old
+#   Qty column's font, alignment and borders. The Unit column names the unit
+#   of the SECOND column — "Nos" unless the line's unit is neither Mtr nor Nos.
 DC_COLUMNS = (("c-sno", "Sr.No."), ("c-desc", "Description"),
-              ("c-qty", "Qty"), ("c-unit", "Unit"))
+              ("c-qty", DQ.MTR_LABEL), ("c-qty", DQ.NOS_LABEL), ("c-unit", "Unit"))
 
 
 def _document_html(dc: dict, copy_label: str = None, screen: bool = False) -> str:
@@ -1217,7 +1266,7 @@ def _document_html(dc: dict, copy_label: str = None, screen: bool = False) -> st
             rows += f"""
         <tr class="row-assembly">
           <td class="c-sno"></td>
-          <td colspan="3" class="c-desc">{P.esc(row.get("description", ""))}</td>
+          <td colspan="4" class="c-desc">{P.esc(row.get("description", ""))}</td>
         </tr>"""
             continue
         sno += 1
@@ -1227,12 +1276,16 @@ def _document_html(dc: dict, copy_label: str = None, screen: bool = False) -> st
                 'padding:0 .4rem;border:1px solid #E5B400;border-radius:999px;'
                 'background:#FFFBEB;color:#6B4E00;white-space:nowrap;">'
                 'Extra item, not billed</span>') if screen and is_extra(row) else ""
+        # Blank cells where a column is empty; a line saved before 17 Nov
+        # 2026 is read by its unit (`dcqty.cols()`).
+        q_mtr, q_nos, unit_lbl = DQ.cols(row)
         rows += f"""
         <tr class="row-item">
           <td class="c-sno">{sno}</td>
           <td class="c-desc">{P.esc(row.get("description", ""))}{chip}</td>
-          <td class="c-qty">{BQ._fmt_qty(row.get("qty") or 0)}</td>
-          <td class="c-unit">{P.esc(row.get("unit", ""))}</td>
+          <td class="c-qty">{DQ.fmt(q_mtr)}</td>
+          <td class="c-qty">{DQ.fmt(q_nos)}</td>
+          <td class="c-unit">{P.esc(unit_lbl)}</td>
         </tr>"""
 
     # ── Our own identity, read and never written into this file ────────────
@@ -1608,8 +1661,7 @@ def create_dc(imported: dict = None):
             posted = []
         data["_chosen"] = {BQ._line_id(r.get("line_id")) for r in posted
                            if isinstance(r, dict)}
-        data["_qty"] = {BQ._line_id(r.get("line_id")): r.get("qty")
-                        for r in posted if isinstance(r, dict)}
+        data["_qty"] = _posted_qty(posted)
         data["_xposted"] = request.form
         return _entry_form(boq, data, "" if resuming else error)
 
@@ -2033,7 +2085,8 @@ def edit_dc(id: str, imported: dict = None):
             "project_id": dc.get("project_id", ""),
             "_chosen": {BQ._line_id(r.get("line_id")) for r in dc.get("items") or []
                         if not r.get("is_header") and not is_extra(r)},
-            "_qty": {BQ._line_id(r.get("line_id")): r.get("qty")
+            # Both columns, as saved; a line from before 17 Nov 2026 by its unit.
+            "_qty": {BQ._line_id(r.get("line_id")): DQ.replay(r)
                      for r in dc.get("items") or []
                      if not r.get("is_header") and not is_extra(r)},
         }
@@ -2096,8 +2149,7 @@ def edit_dc(id: str, imported: dict = None):
         if posted:
             data["_chosen"] = {BQ._line_id(r.get("line_id")) for r in posted
                                if isinstance(r, dict)}
-            data["_qty"] = {BQ._line_id(r.get("line_id")): r.get("qty")
-                            for r in posted if isinstance(r, dict)}
+            data["_qty"] = _posted_qty(posted)
         else:
             data.update({k: v for k, v in _current().items() if k.startswith("_")})
         if read_extras:

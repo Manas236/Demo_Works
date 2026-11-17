@@ -103,6 +103,7 @@ import math
 
 import attendance as AT
 import boq as BQ
+import dcqty as DQ   # Qty (Mtr) / Qty (Nos): the billing quantity is the line's own unit (17 Nov 2026)
 import merged_ra as MRA
 import purchase as PU
 import measurement as MS
@@ -585,7 +586,8 @@ def progress_of(project_id, pnl: dict = None) -> list:
                 continue
             lid = BQ._line_id(it.get("line_id"))
             if lid in want:
-                sent += float(BQ._num(it.get("qty"), 0.0))
+                # The line's OWN unit (dcqty.py, 17 Nov 2026).
+                sent += DQ.billing_qty(it)
 
     # ── Measured: `measurement.py`'s own answer, which is also the ceiling
     #   `ra.overclaims()` uses, so the spoke and the guard cannot disagree

@@ -307,7 +307,9 @@ def test_the_create_form_lists_every_boq_line_with_a_checkbox(client, boq_tip):
     html = client.get(f"/dc/create?boq={boq_tip}").get_data(as_text=True)
     for lid in ("bbbbbbbbbbbb", "cccccccccccc", "dddddddddddd"):
         assert f'id="c_{lid}"' in html, f"line {lid} has no checkbox"
-        assert f'id="q_{lid}"' in html, f"line {lid} has no quantity box"
+        # Two boxes from 17 Nov 2026 (§0 eighty-second block): Mtr and Nos.
+        assert f'id="qm_{lid}"' in html and f'id="qn_{lid}"' in html, \
+            f"line {lid} has no quantity boxes"
     assert "selectAll()" in html and "clearAll()" in html
     # And no Pcs column: that is one variant of their purchase order, not their
     # challan.
@@ -500,13 +502,19 @@ def test_no_rate_from_the_boq_reaches_the_challan(client, boq_tip):
     assert challan.PRINT_TOTALS is False
 
 
-def test_the_goods_table_has_exactly_four_columns(client, boq_tip):
-    """Sr.No. | Description | Qty | Unit — their DC54, and nothing else."""
+def test_the_goods_table_has_exactly_five_columns(client, boq_tip):
+    """
+    Sr.No. | Description | Qty (Mtr) | Qty (Nos) | Unit — their DC 63, and
+    nothing else (17 Nov 2026, §0 eighty-second block). Until that date this
+    was `test_the_goods_table_has_exactly_four_columns`, asserting their
+    DC54's `("c-qty", "Qty")` single column.
+    """
     assert _create(client, boq_tip, _payload(("dddddddddddd", 1))).status_code == 302
     doc = _doc(client.get(f"/dc/print/{_only_dc()['id']}").get_data(as_text=True))
     heads = re.findall(r'<th class="(c-[a-z-]+)">([^<]*)</th>', doc)
     assert heads == [("c-sno", "Sr.No."), ("c-desc", "Description"),
-                     ("c-qty", "Qty"), ("c-unit", "Unit")], heads
+                     ("c-qty", "Qty (Mtr)"), ("c-qty", "Qty (Nos)"),
+                     ("c-unit", "Unit")], heads
 
 
 # ═══ 7. The seller identity is read, never written into this file ══════════

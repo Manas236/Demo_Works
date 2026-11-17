@@ -692,7 +692,10 @@ def test_the_line_picker_prefills_a_blank_quantity_blank(client):
                 f"/purchase/from-boq/{rec['id']}", f"/measurement/create?boq={rec['id']}"):
         page = client.get(url)
         assert page.status_code == 200, (url, page.status_code, page.headers.get("Location"))
-        assert re.search(rf'id="q_{a}"\s+value=""', page.get_data(as_text=True)), url
+        # The challan draws Qty (Mtr) and Qty (Nos) from 17 Nov 2026 (§0
+        # eighty-second block): both open blank for a blank BOQ quantity.
+        box = r'q[mn]_' if url.startswith("/dc/") else r'q_'
+        assert re.search(rf'id="{box}{a}"\s+value=""', page.get_data(as_text=True)), url
 
 
 def test_the_project_page_says_how_many_lines_are_not_priced(client):

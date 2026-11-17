@@ -590,7 +590,11 @@ def test_a_unique_item_number_is_matched_and_ticked_at_the_sheets_quantity(clien
     tok = _dc(client, [["Item", "Qty"], ["4.1", 3]])
     html = applied(client, "challan", tok).get_data(as_text=True)
     assert f'id="c_{lid}" checked' in html
-    assert f'id="q_{lid}"\n              value="3"' in html
+    # The challan's two boxes (17 Nov 2026, §0 eighty-second block): the
+    # sheet's quantity lands in the box of the line's OWN unit.
+    import dcqty
+    box = "qm_" if dcqty.unit_class(line(b, "A", "4.1")[0]["unit"]) == "mtr" else "qn_"
+    assert f'id="{box}{lid}" value="3"' in html
     other = line(b, "A", "4.2")[0]["line_id"]
     assert f'id="c_{other}" checked' not in html, "an unmatched line arrived ticked"
     assert f'action="/dc/create?boq={SIFY}"' in html

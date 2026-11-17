@@ -37,6 +37,7 @@ this reads right without an edit.
 """
 
 from store import STORE
+import dcqty as DQ   # Qty (Mtr) / Qty (Nos): the billing quantity is the line's own unit (17 Nov 2026)
 
 
 def _lid(raw) -> str:
@@ -121,11 +122,9 @@ def qty_by_key(dc) -> dict:
             continue
         key = str(it.get("po_key") or "")
         if key:
-            try:
-                q = float(it.get("qty") or 0.0)
-            except (TypeError, ValueError):
-                q = 0.0
-            out[key] = out.get(key, 0.0) + q
+            # The quantity in the PO line's OWN unit (dcqty.py, 17 Nov 2026);
+            # the other column is information and is never counted.
+            out[key] = out.get(key, 0.0) + DQ.billing_qty(it)
     return out
 
 

@@ -7499,6 +7499,51 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 17 November 2026, by Manas Gawde — DELIVERY CHALLAN QTY (MTR) AND QTY (NOS) · NO CHARGE · POST-GO-LIVE PROD HOTFIX 7
+>
+> **A new block, not an amendment.** The **eighty-second** occasion, written
+> directly on `samruddhi-prod` from `ac887bc` (then 8 ahead / 5 behind origin,
+> nothing pulled). Recorded **"authorised, no charge"** on Manas's written
+> brief: the challan's quantity in two columns, matching the client's own
+> paper DC 63 — Sr.No | Description | Qty (Mtr) | Qty (Nos) | Unit. Pipe
+> carries both (482.4 Mtr, 80 nos); fittings and valves carry Nos only.
+>
+> **What was built** (`dcqty.py`, a leaf): a DC line gains optional
+> `qty_mtr` / `qty_nos`; at least one above 0. `qty` stays and is the
+> **billing quantity — the line's OWN unit** (Mtr line → `qty_mtr`, Nos and
+> every other unit → `qty_nos`), set at save. Two boxes on every DC form (BOQ,
+> no-BOQ, from PO, extras, edit), the source quantity prefilled into the box of
+> its unit. RA-from-DC, the dispatched remainder, over-dispatch, the PO
+> remainder and the P&L count `dcqty.billing_qty()`; the other column is
+> information only. The print: five columns, blank cells where empty. **No
+> migration**: a line saved before renders by its unit.
+>
+> **A deliberate print change**, re-baselined ONCE: `DC_WHOLE` 224faaf4353a2f58
+> / 182465 → 24cefc7b6a33e6be / 182918, blocks `items` and `signature` (the
+> last marker, which runs through copies 2 and 3's items tables). Proved in the
+> golden's own fixture: the new page with its three items tables put back is
+> the old digest exactly. No other golden moved.
+>
+> **Judgement calls, declared:**
+> 1. **The Unit column names the unit of the SECOND column** — "Nos" for a
+>    Mtr, Nos, No or Pcs line, the line's own unit (Kg, Set, Lot, Sq M …)
+>    otherwise, whose quantity sits in the Nos column. A Pcs line prints
+>    "Nos".
+> 2. **Mtr spellings**: Mtr, Mtrs, m, meter(s), metre(s), rmt, rm. **Nos
+>    spellings**: Nos, No, Pcs, Pc, number(s). Case and full stops ignored.
+> 3. **`qty` is kept as the stored billing quantity** rather than computed at
+>    every read, so every reader written before this block stays correct; the
+>    counters also read `billing_qty()` explicitly.
+> 4. **A Mtr line with only its Nos box filled is saved** (at least one > 0)
+>    and counts 0 toward billing — the other column is never counted.
+> 5. **Both boxes blank is refused** on the two-box form; the old rule "a blank
+>    box falls back to the BOQ quantity" survives only for a single-`qty` POST
+>    (Import from Excel, an older page), placed by unit.
+> 6. **The shared BOQ picker and extra-items leaf gained a `two_qty` flag**,
+>    off by default, so the PO, PI, TI and measurement forms are unchanged.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

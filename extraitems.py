@@ -30,6 +30,7 @@ Imports: `pipeline`, `store`, and the leaves `buypick`, `units` and
 import buypick as BYP
 import lineimage as LI
 import pipeline as P
+import dcqty as DQ   # the challan's two quantity columns — the leaf (17 Nov 2026)
 import units as UN
 from store import STORE
 
@@ -95,7 +96,8 @@ def parse_extras(form, *, desc_max: int = EXTRA_DESC_MAX,
                  stored: list = None,
                  with_ref: bool = False, allowed_refs=None,
                  what_msg: str = "Say what is going out.",
-                 cap_msg: str = "Raise more than one challan.") -> tuple:
+                 cap_msg: str = "Raise more than one challan.",
+                 two_qty: bool = False) -> tuple:
     """
     `(rows, error)` — the extra items typed or picked on the form.
 
@@ -122,7 +124,13 @@ def parse_extras(form, *, desc_max: int = EXTRA_DESC_MAX,
     # (`po_key`) through an edit. Kept only when it is in `allowed_refs`, so a
     # crafted POST cannot point a row at another order's line.
     refs = form.getlist("xi_ref") if with_ref else []
-    n_rows = max(len(descs), len(qtys), len(units), len(picks))
+    # The challan's two columns (17 Nov 2026, §0 eighty-second block,
+    # `dcqty.py`): `xi_qty_mtr` / `xi_qty_nos` per row. A POST carrying only
+    # `xi_qty` (an older page) is placed by the row's unit.
+    two_posted = two_qty and bool(form.getlist("xi_qty_mtr") or form.getlist("xi_qty_nos"))
+    mtrs = form.getlist("xi_qty_mtr") if two_posted else []
+    noses = form.getlist("xi_qty_nos") if two_posted else []
+    n_rows = max(len(descs), len(qtys), len(units), len(picks), len(mtrs), len(noses))
 
     def _at(seq, n):
         return str(seq[n] if n < len(seq) else "").strip()
@@ -131,6 +139,8 @@ def parse_extras(form, *, desc_max: int = EXTRA_DESC_MAX,
     for n in range(n_rows):
         desc = _at(descs, n)[:desc_max]
         qty_raw = _at(qtys, n)
+        if two_posted:
+            qty_raw = (_at(mtrs, n) + " " + _at(noses, n)).strip()
         unit = _at(units, n)[:UNIT_MAX]
         pick = _at(picks, n)
         make = _at(makes, n)[:make_max]
@@ -147,17 +157,28 @@ def parse_extras(form, *, desc_max: int = EXTRA_DESC_MAX,
         desc = desc or str(ident.get("name") or "")[:desc_max]
         if not desc:
             return [], f"Extra item {n + 1} has no description. {what_msg}"
-        try:
-            qty = float(qty_raw)
-        except ValueError:
-            return [], f"Quantity for '{desc}' must be a number above 0."
-        if not qty > 0:
-            return [], f"Quantity for '{desc}' must be above 0."
         unit = unit or str(ident.get("unit") or "")[:UNIT_MAX]
+        if two_posted:
+            mtr, nos, err = DQ.parse_pair(_at(mtrs, n), _at(noses, n), desc)
+            if err:
+                return [], err
+            qty = 0.0
+        else:
+            try:
+                qty = float(qty_raw)
+            except ValueError:
+                return [], f"Quantity for '{desc}' must be a number above 0."
+            if not qty > 0:
+                return [], f"Quantity for '{desc}' must be above 0."
         row = {"line_id": None, "extra": True, "is_header": False,
                "item_no": "", "description": desc, "unit": unit,
                "qty": float(qty),
                "source": "spec" if ident else "typed"}
+        if two_qty:
+            if two_posted:
+                DQ.stamp(row, mtr, nos)
+            else:
+                DQ.stamp(row, *DQ.split(qty, unit))
         if with_pcs:
             row["pcs"] = pcs
         if make:
@@ -207,10 +228,21 @@ def _js(pfx: str) -> str:
             .replace("'dc-xi-", f"'{pfx}-xi-"))
 
 
+def _qty_boxes(qty, two) -> str:
+    """One Qty box, or the challan's Mtr / Nos pair (`two` = {"mtr","nos"})."""
+    if two is None:
+        return (f'<input type="number" name="xi_qty" value="{P.esc(qty)}" min="0" step="any"\n'
+                f'                 placeholder="Qty" aria-label="Quantity"/>')
+    return (f'<input type="number" name="xi_qty_mtr" value="{P.esc(two.get("mtr"))}" '
+            f'min="0" step="any" placeholder="Qty (Mtr)" aria-label="Quantity in metres"/>\n'
+            f'          <input type="number" name="xi_qty_nos" value="{P.esc(two.get("nos"))}" '
+            f'min="0" step="any" placeholder="Qty (Nos)" aria-label="Quantity in numbers"/>')
+
+
 def extra_row_html(desc="", qty="", unit="", pick="", spec=None, *,
                    pfx: str = "dc", desc_max: int = EXTRA_DESC_MAX,
                    make=None, make_max: int = 60, pcs=None,
-                   image_row: dict = None, ref=None) -> str:
+                   image_row: dict = None, ref=None, two=None) -> str:
     """
     One extra-item row. Styled on the element: the sheets are pinned.
 
@@ -226,14 +258,13 @@ def extra_row_html(desc="", qty="", unit="", pick="", spec=None, *,
                f'<input type="hidden" name="xi_ref" value="{P.esc(ref)}"/>')
     if make is None and pcs is None and image_row is None:
         return f"""
-        <div class="line-row" style="display:grid;grid-template-columns:minmax(150px,1fr) minmax(180px,1.4fr) minmax(200px,2fr) 110px 90px 34px;gap:.5rem;align-items:center;margin-bottom:.45rem;">
+        <div class="line-row" style="display:grid;grid-template-columns:minmax(150px,1fr) minmax(180px,1.4fr) minmax(200px,2fr) 110px {'90px 90px' if two is not None else '90px'} 34px;gap:.5rem;align-items:center;margin-bottom:.45rem;">
           <input type="text" placeholder="{BYP.FIND_PLACEHOLDER}" oninput="findItem(this)" aria-label="Search the library"/>{ref_box}
           <select name="line_product_id" onchange="{pfx}Pick(this)" aria-label="Specification library">{opts}</select>
           <input type="text" name="xi_desc" value="{P.esc(desc)}" maxlength="{desc_max}"
                  placeholder="Description (required)" aria-label="Description"/>
           {UN.select_html("xi_unit", unit, blank="Unit")}
-          <input type="number" name="xi_qty" value="{P.esc(qty)}" min="0" step="any"
-                 placeholder="Qty" aria-label="Quantity"/>
+          {_qty_boxes(qty, two)}
           <button type="button" class="btn-remove-line" title="Remove this item"
                   onclick="this.closest('.line-row').remove();">&#215;</button>
         </div>"""
@@ -280,7 +311,8 @@ def extras_section_html(stored: list = None, posted=None, *,
                         desc_max: int = EXTRA_DESC_MAX,
                         with_make: bool = False, make_max: int = 60,
                         with_pcs: bool = False, with_image: bool = False,
-                        fmt_qty=None, with_ref: bool = False) -> str:
+                        fmt_qty=None, with_ref: bool = False,
+                        two_qty: bool = False) -> str:
     """
     The *Extra items* section.
 
@@ -299,10 +331,15 @@ def extras_section_html(stored: list = None, posted=None, *,
         units, picks = posted.getlist("xi_unit"), posted.getlist("line_product_id")
         makes, pcses = posted.getlist("xi_make"), posted.getlist("xi_pcs")
         imgs, refs = posted.getlist("xi_image"), posted.getlist("xi_ref")
-        for n in range(max(len(descs), len(qtys), len(units), len(picks))):
+        mtrs, noses = posted.getlist("xi_qty_mtr"), posted.getlist("xi_qty_nos")
+        for n in range(max(len(descs), len(qtys), len(units), len(picks),
+                           len(mtrs), len(noses))):
             rows_data.append(tuple(seq[n] if n < len(seq) else ""
                                    for seq in (descs, qtys, units, picks,
-                                               makes, pcses, imgs, refs)))
+                                               makes, pcses, imgs, refs))
+                             + (({"mtr": mtrs[n] if n < len(mtrs) else "",
+                                  "nos": noses[n] if n < len(noses) else ""},)
+                                if two_qty else ()))
     else:
         for r in stored or []:
             pick = (f"{BYP.SPEC_PREFIX}{r.get('src_spec_id')}:{r.get('src_vidx')}"
@@ -312,15 +349,19 @@ def extras_section_html(stored: list = None, posted=None, *,
                               fmt_qty(q) if fmt_qty else f"{float(q):g}",
                               str(r.get("unit") or ""), pick,
                               str(r.get("make") or ""), str(r.get("pcs") or ""),
-                              LI.image_of(r), str(r.get("po_key") or "")))
+                              LI.image_of(r), str(r.get("po_key") or ""))
+                             + ((DQ.replay(r),) if two_qty else ()))
     while len(rows_data) < DEFAULT_EXTRA_ROWS:
-        rows_data.append(("", "", "", "", "", "", "", ""))
+        rows_data.append(("", "", "", "", "", "", "", "")
+                         + (({"mtr": "", "nos": ""},) if two_qty else ()))
 
     def _row(d=None):
-        d = d or ("", "", "", "", "", "", "", "")
+        d = d or (("", "", "", "", "", "", "", "")
+                  + (({"mtr": "", "nos": ""},) if two_qty else ()))
         if not extra:
             return extra_row_html(*d[:4], spec=spec, pfx=pfx, desc_max=desc_max,
-                                  ref=d[7] if with_ref else None)
+                                  ref=d[7] if with_ref else None,
+                                  two=d[8] if two_qty else None)
         img_row = None
         if with_image:
             img_row = {"description": d[0]}

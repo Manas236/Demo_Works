@@ -72,6 +72,7 @@ import formdraft as FD  # an unsaved form survives Back — Resume / Discard (31
 import docnum as DN    # the typed RA number, forward only per BOQ chain (31 Oct 2026)
 import tinum as TN     # the tax invoice number as Tally gave it — the leaf (17 Nov 2026)
 import boqexcess as BX  # billing above the BOQ quantity, with a reason — the leaf (17 Nov 2026)
+import dcqty as DQ   # Qty (Mtr) / Qty (Nos): the billing quantity is the line's own unit (17 Nov 2026)
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
 # "Is this challan billed, and by which bill?" — ONE predicate, in a leaf both
 # this module and `challan.py` import, because neither may import the other
@@ -2268,7 +2269,8 @@ def dispatched_in(dcs: list) -> dict:
             lid = BQ._line_id(row.get("line_id"))
             if not lid:
                 continue
-            out[lid] = out.get(lid, 0.0) + float(row.get("qty") or 0.0)
+            # The quantity in the BOQ line's OWN unit (dcqty.py, 17 Nov 2026).
+            out[lid] = out.get(lid, 0.0) + DQ.billing_qty(row)
     return out
 
 

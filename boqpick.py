@@ -77,6 +77,7 @@ import json
 
 import boq as BQ
 import pipeline as P
+import dcqty as DQ   # the challan's two quantity columns — the leaf (17 Nov 2026)
 
 
 # The longest make a line keeps — "SANT", "Kirloskar Brothers". One figure for
@@ -218,14 +219,44 @@ def line_ids(boq: dict) -> list:
 # RENDER
 # =============================================================================
 
+def _qty_heads(qty_label: str, two_qty: bool) -> str:
+    """The quantity heading(s): one, or the challan's Mtr and Nos pair."""
+    if not two_qty:
+        return f'<th class="pk-in">{qty_label}</th>'
+    return (f'<th class="pk-in">{DQ.MTR_LABEL}</th>'
+            f'\n              <th class="pk-in">{DQ.NOS_LABEL}</th>')
+
+
+def _qty_cells(lid: str, li: dict, qty_of: dict, avail_txt: str,
+               two_qty: bool) -> str:
+    """The challan's two boxes for one line (`dcqty.py`)."""
+    got = (qty_of or {}).get(lid)
+    if isinstance(got, dict):
+        mtr, nos = str(got.get("mtr") or ""), str(got.get("nos") or "")
+    else:
+        q = avail_txt if got is None else str(got)
+        mtr, nos = (q, "") if DQ.unit_class(li.get("unit")) == "mtr" else ("", q)
+    return (f'<td class="pk-in"><input type="text" inputmode="decimal" id="qm_{lid}"'
+            f' value="{P.esc(mtr)}" aria-label="Quantity in metres"/></td>'
+            f'\n          <td class="pk-in"><input type="text" inputmode="decimal" id="qn_{lid}"'
+            f' value="{P.esc(nos)}" aria-label="Quantity in numbers"/></td>')
+
+
 def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
               with_pcs: bool = False, qty_aria: str = "Quantity",
               with_rate: bool = False, rate_of: dict = None,
               rate_aria: str = "Rate", pcs_of: dict = None,
               with_make: bool = False, make_of: dict = None,
-              with_image: bool = False, image_of: dict = None) -> str:
+              with_image: bool = False, image_of: dict = None,
+              two_qty: bool = False) -> str:
     """
     One row per BOQ line, every box ticked unless a rejected POST says otherwise.
+
+    `two_qty` (17 Nov 2026, §0 eighty-second block — the delivery challan
+    only) replaces the one quantity box with Qty (Mtr) and Qty (Nos)
+    (`dcqty.py`). The schedule's quantity prefills the box matching the
+    line's unit and the other opens blank. `qty_of` may then carry
+    `{"mtr": …, "nos": …}` per line; a plain value is placed by the unit.
 
     **Ticked by default**, because most documents raised from a schedule cover
     the whole schedule and a form that opens with 97 empty boxes makes the
@@ -283,7 +314,8 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
     with_image = bool(with_image) and _LI().grid_has_offers(
         boq.get("line_items") or [])
     span = str(4 + (1 if with_pcs else 0) + (1 if with_rate else 0)
-               + (1 if with_make else 0) + (1 if with_image else 0))
+               + (1 if with_make else 0) + (1 if with_image else 0)
+               + (1 if two_qty else 0))
     out = []
 
     for li in boq.get("line_items") or []:
@@ -393,8 +425,8 @@ def rows_html(boq: dict, chosen: set = None, qty_of: dict = None,
               {P.esc(" ".join(raw_desc.split()))}</span></td>{make_cell}{img_cell}
           <td class="pk-unit">{P.esc(li.get("unit") or "")}</td>
           <td class="pk-avail">{avail_txt}</td>
-          <td class="pk-in"><input type="text" inputmode="decimal" id="q_{lid}"
-              value="{qty_val}" aria-label="{P.esc(qty_aria)}"/></td>{pcs_cell}{rate_cell}
+          {_qty_cells(lid, li, qty_of, avail_txt, two_qty) if two_qty else f'''<td class="pk-in"><input type="text" inputmode="decimal" id="q_{lid}"
+              value="{qty_val}" aria-label="{P.esc(qty_aria)}"/></td>'''}{pcs_cell}{rate_cell}
         </tr>""")
     return "".join(out)
 
@@ -481,7 +513,7 @@ function saveJSON() {
     var lid = LINE_IDS[i], c = el('c_' + lid);
     if (!c || !c.checked) continue;
     lines.push({line_id: lid,
-                qty: (el('q_' + lid) || {}).value || ''__PCS_FIELD____RATE_FIELD____MAKE_FIELD____IMAGE_FIELD__});
+                __QTY_FIELD____PCS_FIELD____RATE_FIELD____MAKE_FIELD____IMAGE_FIELD__});
   }
   el('__PAYLOAD_ID__').value = JSON.stringify({lines: lines});
   return true;
@@ -507,12 +539,20 @@ _IMAGE_FIELD = """,
                 image: (el('img_' + lid) || {}).value || ''"""
 
 
+_QTY_FIELD = "qty: (el('q_' + lid) || {}).value || ''"
+
+# The challan's two columns (17 Nov 2026, §0 eighty-second block, dcqty.py).
+_TWO_QTY_FIELD = ("qty_mtr: (el('qm_' + lid) || {}).value || '',\n"
+                  "                qty_nos: (el('qn_' + lid) || {}).value || ''")
+
+
 def js(payload_id: str, doc_word: str, with_pcs: bool = False,
        with_rate: bool = False, with_make: bool = False,
-       with_image: bool = False) -> str:
+       with_image: bool = False, two_qty: bool = False) -> str:
     """The fold, the ticks and the payload builder, wired to one form."""
     return (_JS_TEMPLATE
             .replace("__DOC_WORD__", doc_word)
+            .replace("__QTY_FIELD__", _TWO_QTY_FIELD if two_qty else _QTY_FIELD)
             .replace("__PCS_FIELD__", _PCS_FIELD if with_pcs else "")
             .replace("__RATE_FIELD__", _RATE_FIELD if with_rate else "")
             .replace("__MAKE_FIELD__", _MAKE_FIELD if with_make else "")
@@ -528,7 +568,7 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
               rate_label: str = "Rate", rate_aria: str = "Rate",
               pcs_of: dict = None, with_make: bool = False,
               make_of: dict = None, with_image: bool = False,
-              image_of: dict = None) -> str:
+              image_of: dict = None, two_qty: bool = False) -> str:
     """
     The whole grid as one form section — tools bar, table, refusal band, and
     the script that drives them.
@@ -571,12 +611,12 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
               <th class="pk-desc">Description</th>{make_head}{img_head}
               <th class="pk-unit">Unit</th>
               <th class="pk-avail">{avail_label}</th>
-              <th class="pk-in">{qty_label}</th>{pcs_head}{rate_head}
+              {_qty_heads(qty_label, two_qty)}{pcs_head}{rate_head}
             </tr></thead>
             <tbody>{rows_html(boq, chosen, qty_of, with_pcs, qty_aria,
                               with_rate, rate_of, rate_aria, pcs_of,
                               with_make, make_of, with_image,
-                              image_of)}</tbody>
+                              image_of, two_qty)}</tbody>
           </table>
         </div>
         <div class="alert alert-error pk-none" id="pk-none">
@@ -587,7 +627,8 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
         var LINE_IDS = {BQ._json_for_script(line_ids(boq))};
         var FAMILIES = {BQ._json_for_script(families(boq))};
       </script>
-      {js(payload_id, doc_word, with_pcs, with_rate, with_make, with_image)}"""
+      {js(payload_id, doc_word, with_pcs, with_rate, with_make, with_image,
+          two_qty)}"""
 
 
 # =============================================================================
@@ -597,7 +638,7 @@ def grid_html(boq: dict, *, title: str, intro_html: str, qty_label: str,
 def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
                  max_lines: int = None, with_pcs: bool = False,
                  with_rate: bool = False, with_make: bool = False,
-                 with_image: bool = False) -> tuple:
+                 with_image: bool = False, two_qty: bool = False) -> tuple:
     """
     Returns `(items, error)` — the BOQ lines that were **ticked**, snapshotted.
 
@@ -646,6 +687,7 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
 
     # Which ids the operator actually ticked.
     picked, qty_of, rate_of, make_of, img_of = [], {}, {}, {}, {}
+    pair_of = {}     # two_qty: {lid: (raw_mtr, raw_nos)} when the row posted them
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -654,6 +696,8 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
             continue
         picked.append(lid)
         qty_of[lid] = row.get("qty")
+        if two_qty and ("qty_mtr" in row or "qty_nos" in row):
+            pair_of[lid] = (row.get("qty_mtr"), row.get("qty_nos"))
         rate_of[lid] = row.get("rate")
         make_of[lid] = row.get("make")
         img_of[lid] = row.get("image")
@@ -717,6 +761,20 @@ def picked_lines(raw: str, boq: dict, *, empty_msg: str, cap_msg: str,
             "qty": float(qty),
             **extra,
         }
+        if two_qty:
+            # The challan's two columns (17 Nov 2026, §0 eighty-second block).
+            # A row posted with both boxes is read as typed; a row posted with
+            # the one `qty` (Import from Excel, an older client) is placed by
+            # the line's unit. `qty` becomes the billing quantity either way.
+            if lid in pair_of:
+                mtr, nos, err = DQ.parse_pair(
+                    *pair_of[lid],
+                    what=f"item {row['item_no'] or '(unnumbered)'}")
+                if err:
+                    return [], err
+            else:
+                mtr, nos = DQ.split(qty, row["unit"])
+            DQ.stamp(row, mtr, nos)
         if with_rate:
             # The prefill is the SUPPLY base rate. The installation track is
             # labour and is never read here — purchase.INCLUDE_INSTALL_TRACK.

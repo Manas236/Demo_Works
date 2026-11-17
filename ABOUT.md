@@ -427,6 +427,7 @@ Consequences you must respect when editing:
 | [buypick.py](buypick.py) | 459 | **The purchase order's item picker** (31 October 2026, CLIENT_CHANGES.md §0 sixtieth block) — the Specification library (while the catalogue is hidden) and the BOQ items (always) as `<optgroup>`s on `/purchase/create`'s rows, the cost-rate and make prefills, the search box script, and `resolve()`, which re-reads a pick's identity at POST. A **leaf**: `store` + `pipeline` at module level, `spec` and `boq` in function bodies only. §5 `/purchase`, *The item picker*; §7 gap 38. |
 | [extraitems.py](extraitems.py) | 332 | **Extra items on a document, and the optional project link** (17 November 2026, CLIENT_CHANGES.md §0 seventy-sixth block) — the repeater lifted out of `challan.py` at its second consumer, the Product Inquiry (`po_draft.py` may not import `challan.py`). `parse_extras()`, `extras_section_html()`, `extra_row_html()`, `is_extra()`, `project_link_from()`, `project_select_html()`. Defaults are the challan's own strings (its pages are byte-identical); the inquiry adds Make, Pcs and a picture by flag. A **leaf**: `store`, `pipeline`, `buypick`, `units`, `lineimage`. §5 `/po`, `/dc`. |
 | [dcpo.py](dcpo.py) | 147 | **A delivery challan raised FROM a purchase order — the shared reads** (17 November 2026, CLIENT_CHANGES.md §0 seventy-eighth block). `lines_of(po)` keys every order line (`L:<line_id>` for a line on the order's BOQ, `I:<n>` for another priced line, `X:<n>` for an extra line); `dispatched_by_key()` / `remaining_by_key()` SUM `qty` per `po_key` over the challans whose `source_po_id` is the order — derived, never stored. A **leaf** (`store` only) because `challan.py` and `purchase.py` both need it and may not import each other. §5 `/dc`. |
+| [dcqty.py](dcqty.py) | 145 | **The delivery challan's Qty (Mtr) and Qty (Nos)** (17 November 2026, CLIENT_CHANGES.md §0 eighty-second block). `unit_class()` (mtr / nos / other); `cols()` — how a line PRINTS, a line without `qty_mtr`/`qty_nos` read by its unit, the Unit column naming the second column's unit ("Nos" unless other); `billing_qty()` — the line's OWN unit, the one figure RA-from-DC, `dcpo`, over-dispatch and `pnl` count; `parse_pair()` / `stamp()` / `replay()` for the forms. A **leaf** (`pipeline`). |
 | [boqexcess.py](boqexcess.py) | 244 | **Billing above the BOQ quantity — allowed, never silent** (17 November 2026, CLIENT_CHANGES.md §0 eighty-first block). `ra._validate()` treats `ra.overclaims()` reason `"overclaim"` as a WARNING needing one `excess_reason`; the measurement, not-in-BOQ and dispatched caps stay hard. `snapshot()` / `stamp()` write `excess_lines` + `excess_reason` only when there is excess (never recomputed); `warning_html()` is the amber form table + reason box; `band_html()` / `boq_band_html()` are the screen-only view bands; `ti_excess()` is the TI-from-BOQ cumulative (live BOQ TIs on the chain, summed on `line_id`; RA bills not counted, §7 gap 78). A **leaf** (`store`, `pipeline`). |
 | [tinum.py](tinum.py) | 165 | **The tax invoice number as Tally Prime issued it** (17 November 2026, CLIENT_CHANGES.md §0 seventy-ninth block). `validate()` — any non-blank value, trimmed, NOT forward-only; refused when another LIVE document already carries it (trimmed, case-insensitive) across `invoices.ref`, `ra_bills.tax_invoice_ref`, `merged_ras.tax_invoice_ref`, naming it; unchanged values pass with no check. `record_change()` appends `{old, new, by, at}` to `ti_number_history`; `history_html()` is screen only. A **leaf** (`store`, `pipeline`) for `docnum.py`'s reason. §3 *A document number typed by hand*, point 10. |
 | [proforma.py](proforma.py) | 1322 | Proforma invoice, derived from a quotation. Reuses the quotation's document sheet. |
@@ -3724,8 +3725,9 @@ Six properties this shape exists to guarantee:
    `print_ra()`, which still resolves a parent clause off the live BOQ because
    no claim row carries one, a challan item row carries the clause text itself
    — so `/dc/print` reads **nothing at all** from `STORE["boqs"]`.
-4. **`item_no` is stored and not printed.** The four-column table is Sr.No. |
-   Description | Qty | Unit, which is their DC54 exactly. The item number is
+4. **`item_no` is stored and not printed.** The table is Sr.No. |
+   Description | Qty (Mtr) | Qty (Nos) | Unit, their DC 63 (five columns from
+   17 November 2026, §0 eighty-second block; it was DC54's four until then). The item number is
    kept because it is what an operator reconciles against the schedule on
    screen, and it is a snapshot for the reason a claim row's is (§3, *"`item_no`
    on a claim row is a SNAPSHOT"*).
@@ -6029,6 +6031,17 @@ document_number_highwater: {"TI": {"26-27": 50}, "PI": {"*": 30}, ...}
     installation MEASUREMENT cap, a line not in the schedule and the
     DISPATCHED cap are still hard blocks.** A screen-only "Billed above BOQ"
     band on the RA, merged, TI and BOQ view pages; every print unchanged.
+
+13. ⚠ **THE CHALLAN'S TWO QUANTITY COLUMNS** (17 November 2026,
+    CLIENT_CHANGES.md §0 **eighty-second** block, `dcqty.py`). A DC line
+    carries optional `qty_mtr` / `qty_nos` (at least one > 0) and `qty` = the
+    billing quantity in the line's OWN unit (Mtr → `qty_mtr`, Nos and any
+    other unit → `qty_nos`). The print is Sr.No | Description | Qty (Mtr) |
+    Qty (Nos) | Unit, the Unit column naming the second column's unit. No
+    migration: an older line renders by its unit. ⚠ **Billing reads only the
+    own-unit figure** — a 482.4 Mtr / 80 Nos pipe line counts 482.4.
+    `boqpick` and `extraitems` take a `two_qty` flag, off by default, so no
+    other document's form moved.
 
 ---
 

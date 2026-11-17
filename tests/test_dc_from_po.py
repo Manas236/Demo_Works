@@ -194,7 +194,12 @@ def test_partial_dispatch_leaves_the_remainder_across_two_challans(boq_po, clien
     assert dcpo.remaining_by_key(po)[k] == 6.0
     html = client.get(f"/dc/create?po={po['id']}").get_data(as_text=True)
     row = html.split(f'value="{k}"')[2]
-    assert 'name="pl_qty" value="6"' in row, "the default is what is left"
+    # Two boxes from 17 Nov 2026 (§0 eighty-second block): what is left
+    # prefills the box of the order line's OWN unit; the other opens blank.
+    import dcqty
+    unit = next(r["unit"] for r in dcpo.lines_of(po) if r["key"] == k)
+    own = "pl_qty_mtr" if dcqty.unit_class(unit) == "mtr" else "pl_qty_nos"
+    assert f'name="{own}" value="6"' in row, "the default is what is left"
     assert _raise(client, po, {k: 6}).status_code == 302
     assert dcpo.remaining_by_key(po)[k] == 0.0
     view = client.get(f"/purchase/view/{po['id']}").get_data(as_text=True)
