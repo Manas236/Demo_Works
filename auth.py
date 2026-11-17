@@ -646,8 +646,92 @@ PANEL_PERMISSIONS = {
                         "po_draft.create_po",
                         "purchase.create_purchase", "purchase.from_boq",
                         "purchase.from_draft", "purchase.edit_purchase_rates",
-                        "challan.create_dc"),
+                        "challan.create_dc",
+                        # 17 Nov 2026 (§0 seventy-seventh block): the other
+                        # forms that already render the field and ask for this
+                        # permission by name — listed so the list is the whole
+                        # set `DOC_NUMBER_CREATE_PERMS` below implies it on.
+                        "quotation.create_quotation", "quotation.edit_quotation",
+                        "boq.create_boq", "boq.edit_boq",
+                        "merged_ra.create_merged",
+                        "po_draft.edit_po", "challan.edit_dc", "ra.edit_ra",
+                        "receipt.edit_receipt", "workorder.edit_wo",
+                        "measurement.edit_ms"),
 }
+
+
+# ── The typed document number follows the CREATE permission ─────────────────
+#    (17 November 2026, CLIENT_CHANGES.md §0 seventy-seventh block)
+#
+# The owner's ruling: a document's number may be typed by hand — forward only —
+# by **anyone who can create that document**, Tax Invoice included. Until this
+# block `docnum.override` was Owner + Director by default (§0 fifty-fourth
+# block), and because `ensure_builtin_roles()` never rewrites a live role, a
+# Sales Manager raising a tax invoice saw the box read-only on every document.
+#
+# ⚠ **IMPLIED, not granted.** On an endpoint named here, `has_perm(
+#   "docnum.override")` answers True for a login holding that document's
+#   create permission. No stored role, no grant and no route classification
+#   moves, so nothing is written to the database; every module keeps asking
+#   for `docnum.override` by name and none of them was edited (`quotation.py`
+#   stays frozen). Outside these endpoints the permission means what it meant.
+#
+# ⚠ **A login whose own BLOCK list names `docnum.override` stays blocked** —
+#   block wins, the fifty-sixth block's rule.
+#
+# ⚠ The forward-only rule is unchanged and server-side (`docnum.validate()`),
+#   and the counter still moves past a typed number. An issued tax invoice's
+#   number stays locked on its edit form; a purchase order's stays typeable
+#   only while it is a `Draft`.
+DOC_NUMBER_CREATE_PERMS = {
+    "invoice.create_invoice": "invoice.create",
+    "invoice.from_boq": "invoice.create",
+    "proforma.create_proforma": "proforma.create",
+    "proforma.from_boq": "proforma.create",
+    "proforma.create_standalone": "proforma.create",
+    "proforma.edit_proforma": "proforma.create",
+    "quotation.create_quotation": "quotation.create",
+    "quotation.edit_quotation": "quotation.create",
+    "purchase.create_purchase": "purchase.create",
+    "purchase.from_boq": "purchase.create",
+    "purchase.from_draft": "purchase.create",
+    "purchase.edit_purchase_rates": "purchase.create",
+    "po_draft.create_po": "po.create",
+    "po_draft.edit_po": "po.create",
+    "challan.create_dc": "dc.create",
+    "challan.edit_dc": "dc.create",
+    "ra.create_ra": "ra.create",
+    "ra.edit_ra": "ra.create",
+    "merged_ra.create_merged": "ra.create",
+    "receipt.new_receipt": "receipt.create",
+    "receipt.edit_receipt": "receipt.create",
+    "measurement.create_ms": "measurement.create",
+    "measurement.edit_ms": "measurement.create",
+    "workorder.create_wo": "purchase.create",
+    "workorder.edit_wo": "purchase.create",
+    "boq.create_boq": "boq.create",
+    "boq.edit_boq": "boq.create",
+    # Import from Excel renders the create form through the `imported=` seam
+    # on its apply step, under the document's own create permission.
+    "docimport.apply_proforma": "proforma.create",
+    "docimport.apply_purchase": "purchase.create",
+    "docimport.apply_quotation": "quotation.create",
+    "docimport.apply_measurement": "measurement.create",
+    "docimport.apply_challan": "dc.create",
+    "docimport.apply_dpo": "po.create",
+    "docimport.apply_ra": "ra.create",
+}
+
+
+def _doc_number_implied(user, held: set) -> bool:
+    """Is `docnum.override` implied here by the document's create permission?"""
+    from flask import has_request_context
+    if not has_request_context():
+        return False
+    need = DOC_NUMBER_CREATE_PERMS.get(request.endpoint or "")
+    if not need or need not in held:
+        return False
+    return "docnum.override" not in ((user or {}).get(PERM_DENY_FIELD) or [])
 
 # ⚠ **A PANEL PERMISSION IS ASKED THROUGH ITS OWN PREDICATE, and that is not
 #   cosmetic.** `tests/test_nav_visibility.py::test_the_dashboard_names_no_
@@ -2122,7 +2206,13 @@ def current_user():
 
 
 def has_perm(perm: str) -> bool:
-    return perm in permissions_of(current_user())
+    user = current_user()
+    held = permissions_of(user)
+    if perm in held:
+        return True
+    # 17 Nov 2026 (§0 seventy-seventh block): the typed document number
+    # follows the create permission — `DOC_NUMBER_CREATE_PERMS`.
+    return perm == "docnum.override" and _doc_number_implied(user, held)
 
 
 def login_user(user) -> None:

@@ -412,23 +412,80 @@ def test_keeping_the_default_writes_no_override_trail(store, sched):
     assert "number_override" not in dc
 
 
-def test_a_role_without_the_permission_cannot_change_a_challan_number(store, sched):
-    """Purchase Manager holds `dc.create` and not `docnum.override`."""
+def test_whoever_can_create_a_challan_can_type_its_number_forward(store, sched):
+    """
+    Purchase Manager holds `dc.create` and not `docnum.override` — and from
+    17 November 2026 (CLIENT_CHANGES.md §0 seventy-seventh block) may type the
+    number anyway: the override FOLLOWS THE CREATE PERMISSION
+    (`auth.DOC_NUMBER_CREATE_PERMS`). Forward only, server-side, as before.
+
+    ⚠ This REVERSES the fifty-fourth block's Owner + Director default. The
+      test it replaced, verbatim:
+
+        def test_a_role_without_the_permission_cannot_change_a_challan_number(store, sched):
+            \"\"\"Purchase Manager holds `dc.create` and not `docnum.override`.\"\"\"
+            assert "dc.create" in auth.BUILTIN_ROLES["purchase-manager"][1]
+            assert "docnum.override" not in auth.BUILTIN_ROLES["purchase-manager"][1]
+            _sign_in_as(store, "purchase-manager")
+            html = store.get(f"/dc/create?boq={sched}").get_data(as_text=True)
+            assert "readonly" in html.split('name="doc_no_seq"')[1][:200]
+            r = _dc_post(store, sched, doc_no_seq="120")
+            assert r.status_code == 200 and not STORE["delivery_challans"]
+            assert "permission" in r.get_data(as_text=True)
+            r = _dc_post(store, sched, doc_no_seq="1")
+            assert r.status_code in (302, 303)
+            assert next(iter(STORE["delivery_challans"].values()))["ref"] == "1"
+    """
     assert "dc.create" in auth.BUILTIN_ROLES["purchase-manager"][1]
-    assert "docnum.override" not in auth.BUILTIN_ROLES["purchase-manager"][1]
+    assert "docnum.override" not in auth.BUILTIN_ROLES["purchase-manager"][1], (
+        "the grant did not move — the override is IMPLIED on the create route")
     _sign_in_as(store, "purchase-manager")
 
     html = store.get(f"/dc/create?boq={sched}").get_data(as_text=True)
-    assert "readonly" in html.split('name="doc_no_seq"')[1][:200]
+    assert "readonly" not in html.split('name="doc_no_seq"')[1][:200]
+
+    # Backwards is still refused, server-side.
+    SET.save_dc_series("", 50)
+    r = _dc_post(store, sched, doc_no_seq="10")
+    assert r.status_code == 200 and not STORE["delivery_challans"]
+    assert "not available" in r.get_data(as_text=True)
 
     r = _dc_post(store, sched, doc_no_seq="120")
-    assert r.status_code == 200 and not STORE["delivery_challans"]
-    assert "permission" in r.get_data(as_text=True)
+    assert r.status_code in (302, 303), r.get_data(as_text=True)[:800]
+    dc = next(iter(STORE["delivery_challans"].values()))
+    assert dc["ref"] == "120"
+    assert int(SET.dc_series()["next_no"]) == 121, "the counter moves past it"
 
-    # …and the default still saves for them.
-    r = _dc_post(store, sched, doc_no_seq="1")
-    assert r.status_code in (302, 303)
-    assert next(iter(STORE["delivery_challans"].values()))["ref"] == "1"
+
+def test_a_login_blocked_from_the_override_stays_blocked(store, sched):
+    """A person's own BLOCK list wins over the implied override (§0 56th)."""
+    _sign_in_as(store, "purchase-manager")
+    with store.session_transaction() as sess:
+        uid = sess[auth.SESSION_KEY]
+    STORE["users"][uid][auth.PERM_DENY_FIELD] = ["docnum.override"]
+    html = store.get(f"/dc/create?boq={sched}").get_data(as_text=True)
+    assert "readonly" in html.split('name="doc_no_seq"')[1][:200]
+    r = _dc_post(store, sched, doc_no_seq="120")
+    assert r.status_code == 200 and "permission" in r.get_data(as_text=True)
+
+
+def test_the_override_is_implied_only_on_the_document_number_endpoints(store):
+    """Outside `DOC_NUMBER_CREATE_PERMS` the permission means what it meant."""
+    import app as A
+    _sign_in_as(store, "purchase-manager")
+    with store.session_transaction() as sess:
+        uid = sess[auth.SESSION_KEY]
+    with A.app.test_request_context("/po/"):
+        from flask import session
+        session[auth.SESSION_KEY] = uid
+        assert not auth.has_perm("docnum.override")
+    assert not auth._doc_number_implied({}, {"dc.create"}), "no request, no implication"
+    # Every endpoint the field renders on implies it from a real create perm.
+    for ep, need in auth.DOC_NUMBER_CREATE_PERMS.items():
+        assert ep in auth.ROUTE_PERMISSIONS, ep
+        assert need in auth.PERMISSIONS and need.endswith(".create"), (ep, need)
+    for ep in auth.PANEL_PERMISSIONS["docnum.override"]:
+        assert ep in auth.DOC_NUMBER_CREATE_PERMS, ep
 
 
 # ── the tax invoice, through a proforma ────────────────────────────────────
@@ -715,3 +772,42 @@ def test_docnum_imports_neither_ra_nor_invoice():
                    "challan", "settings", "auth", "flask"):
         assert banned not in imports_of("docnum"), (
             f"docnum.py imports {banned}; it is a leaf")
+
+
+def test_a_sales_manager_types_a_tax_invoice_number_and_sees_the_gap_note(store, pi):
+    """
+    17 Nov 2026 (§0 seventy-seventh block): `invoice.create` is enough. The
+    GSTR-1 gap note — non-blocking, never printed — is on the form for them
+    too, and a number at or below the highest used is still refused.
+    """
+    assert "invoice.create" in auth.BUILTIN_ROLES["sales-manager"][1]
+    _sign_in_as(store, "sales-manager")
+    html = store.get("/invoice/from/p1").get_data(as_text=True)
+    assert "readonly" not in html.split('name="doc_no_seq"')[1][:200]
+    assert 'class="dnum-warn"' in html and "GSTR&#8209;1" in html
+
+    r = _ti_post(store, doc_no_seq="0007")
+    assert r.status_code in (302, 303), r.get_data(as_text=True)[:800]
+    ti = next(iter(STORE["invoices"].values()))
+    assert ti["ref"].endswith("/0007")
+    sheet = store.get(f"/invoice/print/{ti['id']}").get_data(as_text=True)
+    assert "dnum-warn" not in sheet and "GSTR" not in sheet, "the note never prints"
+
+    r = _ti_post(store, doc_no_seq="0005")
+    assert r.status_code == 200 and "not available" in r.get_data(as_text=True)
+
+
+@pytest.mark.parametrize("role,url", [
+    ("purchase-manager", "/purchase/create"),
+    ("purchase-manager", "/po/create?noboq=1"),
+    ("sales-manager", "/quotation/create"),
+    ("sales-manager", "/proforma/new"),
+])
+def test_the_number_box_is_typeable_for_whoever_can_create(store, role, url):
+    """The client's report (17 Nov 2026): PO, inquiry and the rest — fixed."""
+    _sign_in_as(store, role)
+    r = store.get(url)
+    assert r.status_code == 200, (url, r.status_code)
+    html = r.get_data(as_text=True)
+    assert 'name="doc_no_seq"' in html, url
+    assert "readonly" not in html.split('name="doc_no_seq"')[1][:200], url

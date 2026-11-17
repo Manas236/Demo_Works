@@ -18,6 +18,12 @@ by an Owner or a Director at `/access/<id>`, and no grid of roles can
 show them. What one person can do is that page's *What this login can
 do now*, drawn by the same resolver the gate uses.
 
+⚠ **`docnum.override` is wider than its column** (17 November 2026,
+CLIENT_CHANGES.md §0 seventy-seventh block). On the 34 endpoints in
+`auth.DOC_NUMBER_CREATE_PERMS` it is IMPLIED by that document's create
+permission, so anyone who can raise a document can type its number
+forward. The column shows the grant alone.
+
 **CLIENT_CHANGES-2.md contains no per-role permission grid.** B4 names six roles and states exactly one restriction. B3 describes the Owner/Admin split in five lines. That is the whole of the specification on this subject.
 
 This grid has **651 cells**. **52** of them can be traced to a line of the specification. The rest — **599** — are a **starting position we chose**, and they are marked so that nobody presents them to the client as something he asked for.
@@ -445,7 +451,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `address.edit` | `address.edit_address`, `address.gst_captcha_edit`, `address.gst_lookup_edit` |
 | `address.delete` | `address.archive_address`, `address.delete_address`, `address.merge_address`, `address.unarchive_address` |
 | `settings.edit` | `settings.edit_settings` |
-| `docnum.override` | part of `invoice.create_invoice`, `invoice.from_boq`, `proforma.create_proforma`, `proforma.from_boq`, `proforma.create_standalone`, `proforma.edit_proforma`, `ra.create_ra`, `receipt.new_receipt`, `measurement.create_ms`, `workorder.create_wo`, `po_draft.create_po`, `purchase.create_purchase`, `purchase.from_boq`, `purchase.from_draft`, `purchase.edit_purchase_rates`, `challan.create_dc` — a panel, no page of its own (`auth.PANEL_PERMISSIONS`) |
+| `docnum.override` | part of `invoice.create_invoice`, `invoice.from_boq`, `proforma.create_proforma`, `proforma.from_boq`, `proforma.create_standalone`, `proforma.edit_proforma`, `ra.create_ra`, `receipt.new_receipt`, `measurement.create_ms`, `workorder.create_wo`, `po_draft.create_po`, `purchase.create_purchase`, `purchase.from_boq`, `purchase.from_draft`, `purchase.edit_purchase_rates`, `challan.create_dc`, `quotation.create_quotation`, `quotation.edit_quotation`, `boq.create_boq`, `boq.edit_boq`, `merged_ra.create_merged`, `po_draft.edit_po`, `challan.edit_dc`, `ra.edit_ra`, `receipt.edit_receipt`, `workorder.edit_wo`, `measurement.edit_ms` — a panel, no page of its own (`auth.PANEL_PERMISSIONS`) |
 | `admin.users` | `auth.activate_user`, `auth.create_user`, `auth.deactivate_user`, `auth.edit_staff_access`, `auth.edit_user`, `auth.list_users`, `auth.staff_access` |
 | `admin.roles` | `auth.create_role`, `auth.edit_role`, `auth.list_roles` |
 | `admin.access_log` | `auth.access_log` |

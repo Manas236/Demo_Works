@@ -5939,6 +5939,26 @@ document_number_highwater: {"TI": {"26-27": 50}, "PI": {"*": 30}, ...}
    is untouched, so deleting a PI or a PO still lets the automatic series
    re-issue that ordinal exactly as it did before — §7 **gap 83**.
 
+9. ⚠ **WHO may type it: whoever can CREATE that document** (17 November
+   2026, CLIENT_CHANGES.md §0 **seventy-seventh** block — it reverses the
+   fifty-fourth block's Owner + Director default). Implemented as ONE rule in
+   `auth.has_perm()`: on the endpoints of `auth.DOC_NUMBER_CREATE_PERMS`
+   (every create form that renders the field, the edit forms that already
+   did, and Import from Excel's seven `apply_*` steps) `docnum.override` is
+   **implied** by that document's create permission. No role, grant or route
+   classification moved and nothing was written to the database — that is
+   why it is implied rather than granted: `ensure_builtin_roles()` never
+   rewrites a live role, and on the box only Owner and Director held it, so
+   a Sales Manager saw the box read-only on the Tax Invoice. No document
+   module was edited (`quotation.py` stays frozen); each still asks for
+   `docnum.override` by name. A login whose own BLOCK list names it stays
+   blocked. Forward-only is unchanged and server-side; the TI's GSTR-1 gap
+   note (`number_field(skip_note=True)`, non-printing) now reaches every TI
+   creator. `docs/ACCESS_MATRIX.md` says the column shows the grant alone.
+   **Not covered:** the single-leg RA bill's statutory `tax_invoice_ref`
+   (a free-text full string, no forward check — §7 gap 32) and merged-RA
+   edit (no number field); the payslip carries no number.
+
 ---
 
 ### Resume after Back on every create form  (31 October 2026 — §0 sixty-fourth block, Part 4)

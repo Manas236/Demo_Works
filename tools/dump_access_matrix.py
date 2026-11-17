@@ -460,6 +460,13 @@ def build() -> str:
     w("show them. What one person can do is that page's *What this login can")
     w("do now*, drawn by the same resolver the gate uses.")
     w("")
+    w("⚠ **`docnum.override` is wider than its column** (17 November 2026,")
+    w("CLIENT_CHANGES.md §0 seventy-seventh block). On the "
+      f"{len(auth.DOC_NUMBER_CREATE_PERMS)} endpoints in")
+    w("`auth.DOC_NUMBER_CREATE_PERMS` it is IMPLIED by that document's create")
+    w("permission, so anyone who can raise a document can type its number")
+    w("forward. The column shows the grant alone.")
+    w("")
     w("**CLIENT_CHANGES-2.md contains no per-role permission grid.** B4 names "
       "six roles and states exactly one restriction. B3 describes the "
       "Owner/Admin split in five lines. That is the whole of the "

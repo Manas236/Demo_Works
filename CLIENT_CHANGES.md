@@ -7276,6 +7276,48 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 17 November 2026, by Manas Gawde — THE TYPED DOCUMENT NUMBER FOR EVERYONE WHO CAN CREATE THE DOCUMENT · NO CHARGE · POST-GO-LIVE PROD HOTFIX 2, PART B
+>
+> **A new block, not an amendment.** Every earlier block stands except where
+> this one says it reverses one. The **seventy-seventh** occasion, written
+> directly on `samruddhi-prod`. Recorded **"authorised, no charge"** on
+> Manas's written brief, which cites the owner's ruling of 27 October: the
+> number may be overridden by hand on ALL numbered documents, Tax Invoice
+> included, forward only. The client reported they could not do it on the
+> Tax Invoice, PO, DC and others.
+>
+> **Diagnosis.** The field and the forward-only rule (`docnum.py`) were
+> already on every numbered document's create form (and, from 2 Nov, most
+> edit forms). The gap was WHO: `docnum.override` was Owner + Director by
+> default (fifty-fourth block), and on the live box only those two roles held
+> it — the Sales Manager, Purchase Manager and Accountant logins (3 of 7)
+> saw the box read-only everywhere.
+>
+> **What changed.** ⚠ **This reverses the fifty-fourth block's default.** On
+> the endpoints of `auth.DOC_NUMBER_CREATE_PERMS`, `docnum.override` is
+> IMPLIED by that document's create permission. One rule in `auth.has_perm()`;
+> no stored role, grant or route classification moved; no document module was
+> edited (`quotation.py` stays frozen); a login's own BLOCK list still wins.
+> Forward-only stays server-side and the counter still moves past a typed
+> number. The TI's non-printing GSTR-1 gap note already existed
+> (`number_field(skip_note=True)`) and now reaches every TI creator.
+> `docnum.override`'s panel list gained the eleven forms that already asked
+> for it by name; `docs/ACCESS_MATRIX.md` regenerated (counts unchanged).
+>
+> **Judgement calls, declared:** (1) implied, not granted — granting would
+> need a write to the live `roles` table, which this hotfix may not make;
+> (2) the existing 2 Nov forward-only number box on the EDIT forms of
+> documents with no draft state (PI, quotation, inquiry, DC, RA number,
+> receipt, measurement sheet, work order, BOQ) was **left as it is**, though
+> the brief says an issued document's number is never editable — removing a
+> capability the 2 Nov block granted is a decision for the owner, not a gap
+> fix; the TI's edit form keeps its number locked and the PO's stays typeable
+> only while `Draft`. **Skipped, needs new numbering logic:** the single-leg
+> RA bill's statutory `tax_invoice_ref` (free text, no forward check — §7 gap
+> 32) and merged-RA edit (no number field). The payslip carries no number.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
