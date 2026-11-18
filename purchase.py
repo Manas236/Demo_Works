@@ -148,6 +148,7 @@ from quotation import (
 # the goods are moving.
 from quotation import _DEL_TERMS, _DISPATCH, _INCOTERMS, _PAY_TERMS, _sel_opts
 from address import picker_options, VENDOR_TYPES  # the merge reads the same tuple
+from address import format_address_lines, is_active  # the Deliver-to picker (18 Nov 2026)
 
 purchase_bp = Blueprint("purchase", __name__, url_prefix="/purchase")
 
@@ -367,6 +368,114 @@ def _addr_block(addr: dict) -> str:
     if addr.get("phone"): parts.append(f'Ph: {addr["phone"]}')
     if addr.get("gstin"): parts.append(f'GSTIN: {addr["gstin"]}')
     return "\n".join(parts)
+
+
+# =============================================================================
+# DELIVER TO — an address-book picker above the free-text box (18 Nov 2026)
+# =============================================================================
+#
+# The client asked to pick "Deliver to" from saved addresses. The rules:
+#
+# * **The textarea is still the document.** `delivery_to` is the snapshot that
+#   prints, exactly as before; the picker only FILLS it (in the browser) and
+#   the box stays editable for a one-off location. The print never reads the
+#   picker or the book, so no printed PO moves.
+# * **`deliver_to_address_id` is informational.** It is the picked id, and it
+#   is kept only when the posted text is still exactly that address's
+#   formatted text (`_deliver_to_id_from()`); text edited after picking stores
+#   "". It is NOT in `address.REFERENCE_SOURCES`: `address.LINK_TYPES` is keyed
+#   by collection and pins `purchases` to Vendor types, so registering a
+#   second, any-type link on the same collection needs the merge's type rule
+#   reworked — beyond the registry, so not done. A delete or merge of the
+#   address leaves this id dangling; the form then shows the picker unselected
+#   and the next save stores "".
+# * **Every type is offered**, site / office / delivery first. An earlier
+#   picker that offered only `SITE_TYPES` looked broken whenever an address had
+#   been filed under another type.
+# * **The formatter is the challan consignee's**, `address.format_address_lines()`
+#   joined by newlines — postal lines only, no GSTIN or phone.
+# * **No permission.** The options and the texts are written into the form by
+#   the server, so whoever may open the PO form may use the picker; nothing
+#   here needs `address.view`.
+#
+# ⚠ Old orders carry no `deliver_to_address_id` and are never migrated. Their
+#   edit form preselects an address only when the stored text is exactly ONE
+#   address's formatted text — display only, nothing is written until a save.
+
+DELIVER_TO_ID = "deliver_to_address_id"
+_DELIVER_TO_TYPE_ORDER = ("site", "office", "shipping")
+
+
+def _deliver_to_text(addr: dict) -> str:
+    """One address as the Deliver-to box is filled with it."""
+    return "\n".join(format_address_lines(addr or {}))
+
+
+def _norm_deliver_to(text) -> str:
+    """A browser posts a textarea with CRLF; compare on LF, trimmed."""
+    return str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def _deliver_to_id_from(form, stored_id: str = "") -> str:
+    """
+    The id to store for the posted Deliver-to: the posted id, when it names an
+    address in the book (active, or the one this order already holds) AND the
+    posted text is still exactly its formatted text. Otherwise "".
+    """
+    aid = str(form.get(DELIVER_TO_ID) or "").strip()
+    addr = (STORE.get("addresses") or {}).get(aid) if aid else None
+    if not isinstance(addr, dict):
+        return ""
+    if not is_active(addr) and aid != str(stored_id or ""):
+        return ""
+    if _norm_deliver_to(form.get("delivery_to")) != _norm_deliver_to(_deliver_to_text(addr)):
+        return ""
+    return aid
+
+
+def _deliver_to_match(text) -> str:
+    """The one ACTIVE address whose formatted text is exactly `text`, else ""."""
+    want = _norm_deliver_to(text)
+    if not want:
+        return ""
+    hits = [aid for aid, a in (STORE.get("addresses") or {}).items()
+            if isinstance(a, dict) and is_active(a)
+            and _norm_deliver_to(_deliver_to_text(a)) == want]
+    return hits[0] if len(hits) == 1 else ""
+
+
+def _deliver_to_picker(selected: str = "") -> str:
+    """
+    The `<select>` that sits directly above the Deliver-to textarea, and the
+    few lines of script that fill the box from it. Every option label is
+    escaped by `address.picker_options()`; the texts go in through
+    `P.json_for_script()`. Plain concatenation, not an f-string — the braces
+    in the script are single.
+    """
+    book = STORE.get("addresses") or {}
+    selected = str(selected or "")
+    if selected not in book:
+        selected = ""
+    opts = picker_options("Pick saved address", selected=selected,
+                          type_order=_DELIVER_TO_TYPE_ORDER)
+    texts = {aid: _deliver_to_text(a) for aid, a in book.items()
+             if isinstance(a, dict) and (is_active(a) or aid == selected)}
+    return (
+        '<select id="' + DELIVER_TO_ID + '" name="' + DELIVER_TO_ID + '"'
+        ' aria-label="Pick a saved address for Deliver To"'
+        ' style="margin-bottom:.4rem;">' + opts + '</select>\n'
+        '<script>(function () {\n'
+        '  var M = ' + P.json_for_script(texts) + ';\n'
+        '  var s = document.getElementById("' + DELIVER_TO_ID + '");\n'
+        '  var t = document.getElementById("delivery_to");\n'
+        '  if (!s || !t) return;\n'
+        '  s.addEventListener("change", function () {\n'
+        '    if (!s.value || !Object.prototype.hasOwnProperty.call(M, s.value)) return;\n'
+        '    t.value = M[s.value];\n'
+        '    t.dispatchEvent(new Event("input", { bubbles: true }));\n'
+        '  });\n'
+        '})();</script>'
+    )
 
 
 def _purchases_for(quotation_id: str) -> list:
@@ -2438,6 +2547,9 @@ def create_purchase(imported: dict = None):
                 # ── Where and when we want it ─────────────────────────────
                 "delivery_date":    (f.get("delivery_date") or "").strip(),
                 "delivery_to":      (f.get("delivery_to") or "").strip(),
+                # The picked address, kept only while the text is still its
+                # formatted text (18 Nov 2026). Informational; never printed.
+                DELIVER_TO_ID:      _deliver_to_id_from(f),
                 "payment_terms":    (f.get("payment_terms") or "").strip(),
                 "delivery_terms":   (f.get("delivery_terms") or "").strip(),
                 "dispatch_through": (f.get("dispatch_through") or "").strip(),
@@ -2761,6 +2873,7 @@ def create_purchase(imported: dict = None):
             </div>
             <div class="form-group span2">
               <label for="delivery_to">Deliver To</label>
+              {_deliver_to_picker(_v(DELIVER_TO_ID))}
               <textarea id="delivery_to" name="delivery_to" rows="3"
                 placeholder="our stores, or the project site">{P.esc(v_del_to)}</textarea>
               <small class="field-hint">Where the vendor sends the material.
@@ -2946,6 +3059,9 @@ def _form_values(f, is_post: bool, **defaults) -> dict:
         "delivery_date":    v("delivery_date"),
         "delivery_to":      v("delivery_to",
                               defaults.get("delivery_to") or B.COMPANY_ADDR),
+        # The Deliver-to picker's selection: what was posted on a redraw, and
+        # nothing on a GET — the carried-over text is not matched to the book.
+        DELIVER_TO_ID:      v(DELIVER_TO_ID),
         "tax_type":         v("tax_type", "cgst_sgst"),
         "cgst_rate":        v("cgst_rate", "9"),
         "igst_rate":        v("igst_rate", "18"),
@@ -3104,6 +3220,7 @@ def _upstream_form(*, title: str, action: str, back_html: str, intro_html: str,
             </div>
             <div class="form-group span2">
               <label for="delivery_to">Deliver To</label>
+              {_deliver_to_picker(data.get(DELIVER_TO_ID, ""))}
               <textarea id="delivery_to" name="delivery_to" rows="3"
                 placeholder="our stores, or the project site">{P.esc(data['delivery_to'])}</textarea>
             </div>
@@ -3173,6 +3290,10 @@ def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
       extra parts alone belongs on `/purchase/create`.
     """
     boq = boq or {}
+    # The Deliver-to picker's id (18 Nov 2026), kept only while the text is
+    # still that address's formatted text — `create_purchase()`'s rule.
+    deliver_to_id = _deliver_to_id_from(
+        {"delivery_to": data["delivery_to"], DELIVER_TO_ID: data.get(DELIVER_TO_ID, "")})
     tax_type = data["tax_type"]
     cgst = P.parse_money(data["cgst_rate"])
     igst = P.parse_money(data["igst_rate"])
@@ -3220,6 +3341,7 @@ def _write_upstream_po(*, data: dict, vendor_fields: dict, items: list,
 
         "delivery_date":    data["delivery_date"],
         "delivery_to":      data["delivery_to"],
+        DELIVER_TO_ID:      deliver_to_id,
         "payment_terms":    data["payment_terms"],
         "delivery_terms":   data["delivery_terms"],
         "dispatch_through": data["dispatch_through"],
@@ -4804,6 +4926,13 @@ def edit_purchase_rates(id: str, imported: dict = None):
                         "dispatch_through", "incoterms", "delivery_to", "notes"):
                 if key in f:
                     po[key] = (f.get(key) or "").strip()
+            # The Deliver-to picker (18 Nov 2026). Only from a form that has
+            # it, and an order written before it gains the key only when an
+            # address is actually picked — a plain re-save adds nothing.
+            if "delivery_to" in f and DELIVER_TO_ID in f:
+                picked = _deliver_to_id_from(f, before.get(DELIVER_TO_ID) or "")
+                if picked or DELIVER_TO_ID in po:
+                    po[DELIVER_TO_ID] = picked
             po["line_items"] = items
             po["charges"] = charges
             po["extra_lines"] = extra_lines
@@ -5100,6 +5229,7 @@ def _edit_form_page(po: dict, id: str, *, error: str = "", may_number: bool,
             </div>
             <div class="form-group span2">
               <label for="delivery_to">Deliver To</label>
+              {_deliver_to_picker(f.get(DELIVER_TO_ID) if is_post else (po.get(DELIVER_TO_ID) or _deliver_to_match(po.get("delivery_to"))))}
               <textarea id="delivery_to" name="delivery_to" rows="3">{P.esc(_v("delivery_to", po.get("delivery_to")))}</textarea>
             </div>
             <div class="form-group span2">

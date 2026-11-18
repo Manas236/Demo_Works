@@ -1161,7 +1161,8 @@ def picker_payload() -> dict:
 
 def picker_options(placeholder: str = "— choose from address book —",
                    only_types: tuple | list | None = None,
-                   selected: str = "") -> str:
+                   selected: str = "",
+                   type_order: tuple | list | None = None) -> str:
     """
     <option> list grouped by address type, for a picker <select>.
 
@@ -1191,6 +1192,11 @@ def picker_options(placeholder: str = "— choose from address book —",
     afterwards must not silently drop the vendor or the site it already carries;
     that option stays, marked, so the operator sees what the record holds and
     can change it deliberately. Everything else archived is gone from the list.
+
+    ``type_order`` (18 Nov 2026, the PO's Deliver-to picker) puts those type
+    groups first, in that order, and the rest after them in `ADDRESS_TYPES`
+    order. Omitted, the groups come in `ADDRESS_TYPES` order exactly as before
+    — every existing caller's output is unchanged byte for byte.
     """
     book = STORE["addresses"]
     html = f'<option value="">{_e(placeholder)}</option>'
@@ -1207,8 +1213,11 @@ def picker_options(placeholder: str = "— choose from address book —",
                 f'{_e(a.get("label"))}{tail}{arch}</option>')
 
     wanted = tuple(only_types) if only_types else None
+    first = [t for t in (type_order or ()) if t in ADDRESS_TYPES]
+    ordered = first + [t for t in ADDRESS_TYPES if t not in first]
 
-    for type_key, type_label in ADDRESS_TYPES.items():
+    for type_key in ordered:
+        type_label = ADDRESS_TYPES[type_key]
         if wanted and type_key not in wanted:
             continue
         rows = [(aid, a) for aid, a in book.items()

@@ -2736,6 +2736,12 @@ record to freeze a copy of, because the decision to buy is ours.
   pinned bytes still.
 - **Where and when:** `delivery_date` (wanted by), `delivery_to`,
   `payment_terms`, `delivery_terms`, `dispatch_through`, `incoterms`
+- **Deliver-to pick (18 Nov 2026):** `deliver_to_address_id` — the address
+  picked on the form's Deliver-to picker, `""` when the text is typed or was
+  edited after picking. **Informational only**: `delivery_to` is still the
+  snapshot that prints, and the id is NOT in `address.REFERENCE_SOURCES` (see
+  §3 *Deliver-to picker* below). Absent on every order written before it and
+  never migrated; an edit adds it only when an address is actually picked.
 - **Lifecycle:** `status`, `status_history[]` (`{at, status, note}`)
 - **Other:** `notes`, `company_branch`, `auth_signatory`
 
@@ -6042,6 +6048,30 @@ document_number_highwater: {"TI": {"26-27": 50}, "PI": {"*": 30}, ...}
     own-unit figure** — a 482.4 Mtr / 80 Nos pipe line counts 482.4.
     `boqpick` and `extraitems` take a `two_qty` flag, off by default, so no
     other document's form moved.
+
+14. **THE PURCHASE ORDER'S DELIVER-TO PICKER** (18 November 2026, prod
+    hotfix, `purchase.py`). A `<select>` of the WHOLE address book (every
+    active type; site, office, delivery groups first through
+    `address.picker_options(type_order=…)`, which is unchanged for every other
+    caller) sits directly above the Deliver-to textarea on `/purchase/create`,
+    `/purchase/from-boq`, `/purchase/from-draft` and `/purchase/edit`. Picking
+    one FILLS the box with `address.format_address_lines()` joined by newlines
+    (the challan consignee's formatter) and dispatches `input` for the
+    autosave; the box stays editable and is what prints. `deliver_to_address_id`
+    is stored only while the posted text equals that address's formatted text
+    (CRLF-normalised), else `""`; an id not in the book, or archived and not
+    the one the order holds, is ignored. Archived addresses are offered only as
+    the order's own stored pick, marked "(archived)". An old order's edit form
+    preselects an address only when its stored text is exactly ONE active
+    address's text — display only. No permission: the options are written by
+    the server, so `address.view` is not needed. ⚠ **Not registered in
+    `address.REFERENCE_SOURCES`**: `LINK_TYPES` is keyed by collection and
+    pins `purchases` to Vendor types, so an any-type second link on the same
+    collection needs the merge's type rule reworked. A merge or delete of the
+    address leaves the id dangling; the form then shows the picker unselected
+    and the next save stores `""`. The Product Inquiry's Deliver-to is a
+    single-line input, not this textarea, and has no picker; its text still
+    carries to the order on convert.
 
 ---
 
