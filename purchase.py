@@ -451,6 +451,15 @@ def _deliver_to_picker(selected: str = "") -> str:
     escaped by `address.picker_options()`; the texts go in through
     `P.json_for_script()`. Plain concatenation, not an f-string — the braces
     in the script are single.
+
+    ⚠ **The textarea is looked up WHEN THE PICK HAPPENS, never when the script
+      runs** (18 Nov 2026, second hotfix). This script is inline and sits
+      ABOVE `<textarea id="delivery_to">`, so at parse time the textarea does
+      not exist yet. The first version looked it up there, got null and
+      returned before binding anything, so picking filled nothing on all four
+      forms. The listener is delegated from `document` and finds both elements
+      at event time. A pick ALWAYS replaces the box, whatever was in it; the
+      blank "Pick saved address" option leaves it alone.
     """
     book = STORE.get("addresses") or {}
     selected = str(selected or "")
@@ -466,11 +475,11 @@ def _deliver_to_picker(selected: str = "") -> str:
         ' style="margin-bottom:.4rem;">' + opts + '</select>\n'
         '<script>(function () {\n'
         '  var M = ' + P.json_for_script(texts) + ';\n'
-        '  var s = document.getElementById("' + DELIVER_TO_ID + '");\n'
-        '  var t = document.getElementById("delivery_to");\n'
-        '  if (!s || !t) return;\n'
-        '  s.addEventListener("change", function () {\n'
-        '    if (!s.value || !Object.prototype.hasOwnProperty.call(M, s.value)) return;\n'
+        '  document.addEventListener("change", function (e) {\n'
+        '    var s = e.target;\n'
+        '    if (!s || s.id !== "' + DELIVER_TO_ID + '") return;\n'
+        '    var t = document.getElementById("delivery_to");\n'
+        '    if (!t || !s.value || !Object.prototype.hasOwnProperty.call(M, s.value)) return;\n'
         '    t.value = M[s.value];\n'
         '    t.dispatchEvent(new Event("input", { bubbles: true }));\n'
         '  });\n'

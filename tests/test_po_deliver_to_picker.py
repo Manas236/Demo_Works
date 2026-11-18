@@ -306,3 +306,103 @@ def test_a_purchase_only_login_sees_and_uses_the_picker(client, book):
     finally:
         del STORE["users"][user["id"]]
         del STORE["roles"]["role-dt-buyer"]
+
+
+# ══ The fill script — 18 Nov 2026, second hotfix ══════════════════════════
+#
+# The first version looked the textarea up at PARSE time. The script sits
+# above the textarea, so the lookup returned null and the script returned
+# before binding anything: picking filled nothing, on every form. There is no
+# JS runtime on the prod box, so these assertions pin the structure that makes
+# the fill work. They do not execute the script.
+
+def _four_forms(client, book):
+    """The rendered HTML of all four PO forms, each with old text in the box."""
+    import json
+    po = _create(client, delivery_to="RELIANCE INDUSTRIES LIMITED\nMothikavdi, Jamnagar")
+    line = book["lines"][0]
+    vendor = next(a["id"] for a in STORE["addresses"].values() if a.get("type") == "vendor")
+    STORE.setdefault("purchase_orders", {}).clear()
+    r = client.post(f"/po/create?boq={book['boq']}", data={
+        "date": "2026-11-18", "vendor_id": vendor, "notes": "",
+        "delivery_to": "Site store",
+        "po_json": json.dumps({"lines": [{"line_id": line["line_id"], "qty": "1"}]})})
+    assert r.status_code == 302, r.get_data(as_text=True)[:800]
+    did = next(iter(STORE["purchase_orders"]))
+    pages = {
+        "create": client.get("/purchase/create"),
+        "from-boq": client.get(f"/purchase/from-boq/{book['boq']}"),
+        "from-draft": client.get(f"/purchase/from-draft/{did}"),
+        "edit": client.get(f"/purchase/edit/{po['id']}"),
+    }
+    out = {}
+    for name, resp in pages.items():
+        assert resp.status_code == 200, name
+        out[name] = resp.get_data(as_text=True)
+    STORE["purchase_orders"].clear()
+    return out
+
+
+def _script(html):
+    i = html.index('<select id="deliver_to_address_id"')
+    j = html.index("<script>", i)
+    return html[j:html.index("</script>", j)]
+
+
+def test_the_fill_script_never_reads_the_textarea_at_parse_time(client, book):
+    for name, html in _four_forms(client, book).items():
+        js = _script(html)
+        # The textarea really is below the script, which is why it matters.
+        assert html.index(js) < html.index('<textarea id="delivery_to"'), name
+        handler_at = js.index('addEventListener("change"')
+        assert js.index('getElementById("delivery_to")') > handler_at, \
+            f"{name}: the textarea must be looked up inside the handler"
+        assert js.count('getElementById("delivery_to")') == 1, name
+        # Nothing before the listener may bail out of the script.
+        assert "return" not in js[:handler_at], name
+        # The listener is on document, so it does not depend on element order.
+        assert 'document.addEventListener("change"' in js, name
+
+
+def test_a_pick_always_overwrites_whatever_is_in_the_box(client, book):
+    for name, html in _four_forms(client, book).items():
+        js = _script(html)
+        body = js[js.index('addEventListener("change"'):]
+        # The old text is never consulted: no read of t.value, no defaultValue,
+        # no "was it edited" flag. A pick is an unconditional assignment.
+        assert "t.value = M[s.value];" in body, name
+        assert body.count("t.value") == 1, f"{name}: t.value is written once and never read"
+        for guard in ("defaultValue", "dataset", "trim()", ".length", "edited"):
+            assert guard not in body, f"{name}: {guard} looks like a skip guard"
+        # The blank option leaves the box alone; the input event follows the fill.
+        assert "!s.value" in body, name
+        assert body.index("t.value = M[s.value];") < body.index('new Event("input", { bubbles: true })'), name
+
+
+def test_every_offered_option_has_its_full_text_in_the_payload(client, book):
+    import json
+    for name, html in _four_forms(client, book).items():
+        js = _script(html)
+        m = re.search(r"var M = (\{.*?\});\n", js, re.S)
+        assert m, name
+        payload = json.loads(m.group(1))
+        ids = re.findall(r'<option value="([^"]+)"', _select(html))
+        assert ids, name
+        for aid in ids:
+            assert aid in payload, f"{name}: option {aid} has no text"
+            assert payload[aid] == _text(aid) and payload[aid].strip(), f"{name}: {aid}"
+
+
+def test_picking_on_the_edit_form_replaces_old_stored_text(client, book):
+    # The live report: an order holding the old Reliance text, the user picks
+    # a site. What the browser would post after the fill is the site's text.
+    po = _create(client, delivery_to="RELIANCE INDUSTRIES LIMITED\nMothikavdi, Jamnagar")
+    page = client.get(f"/purchase/edit/{po['id']}").get_data(as_text=True)
+    import json
+    payload = json.loads(re.search(r"var M = (\{.*?\});\n", _script(page), re.S).group(1))
+    r = client.post(f"/purchase/edit/{po['id']}", data=_edit_form(
+        po, deliver_to_address_id=SITE, delivery_to=payload[SITE].replace("\n", "\r\n")))
+    assert r.status_code == 302, r.get_data(as_text=True)[:800]
+    assert po["deliver_to_address_id"] == SITE
+    assert po["delivery_to"].replace("\r\n", "\n") == _text(SITE)
+    assert "Mothikavdi" not in po["delivery_to"]
