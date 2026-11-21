@@ -1077,10 +1077,20 @@ def print_merged(id: str):
                ("c-qty", "Qty"), ("c-unit", "Unit"), ("c-rate", "Rate"),
                ("c-amt", "Amount"))
 
+    # ⚠ **Seven columns, so every summary row is seven cells** (17 Nov 2026).
+    #   `sum_row()` / `total_row()` default to the sell side's EIGHT (a 4-wide
+    #   label before Qty, then Qty, Unit, Price). Called bare here they added an
+    #   unheaded eighth column, and the browser squeezed the whole item table,
+    #   header and rows, into the left ~80% of the page with the totals in a
+    #   column of their own. Same shape as the tax invoice's: the label spans
+    #   everything before Qty — S.No, Description, HSN/SAC.
+    def _sum(label, amount):
+        return DS.sum_row(label, amount, blanks=("c-qty", "c-unit", "c-rate"), span=3)
+
     tax_rows = ""
     for slab in tax_slabs(doc):
         for head, amt in slab.get("heads", []):
-            tax_rows += DS.sum_row(f"{_esc(head)}", DS._inr(float(amt or 0.0)))
+            tax_rows += _sum(f"{_esc(head)}", DS._inr(float(amt or 0.0)))
 
     # ⚠ **Folded into `rows` before it reaches `items_table()`, not appended to
     #   `sheet` after it.** `sum_row()`/`total_row()` return bare `<tr>`
@@ -1093,12 +1103,13 @@ def print_merged(id: str):
     #   whole `<table class="page-frame">`, which is why the sheet printed with
     #   the bank/signature block above the letterhead.
     totals_rows = (
-        DS.sum_row("Claim subtotal", DS._inr(float(doc.get("claim_subtotal") or 0.0)))
-        + DS.sum_row("Less deductions", DS._inr(float(doc.get("deduction_total") or 0.0)))
-        + DS.sum_row("Net payable", DS._inr(float(doc.get("net_payable") or 0.0)))
+        _sum("Claim subtotal", DS._inr(float(doc.get("claim_subtotal") or 0.0)))
+        + _sum("Less deductions", DS._inr(float(doc.get("deduction_total") or 0.0)))
+        + _sum("Net payable", DS._inr(float(doc.get("net_payable") or 0.0)))
         + tax_rows
-        + DS.sum_row("Rounding off", DS._inr(float(doc.get("rounding_off") or 0.0)))
-        + DS.total_row("Grand Total", "", DS._inr(float(doc.get("grand_total") or 0.0)))
+        + _sum("Rounding off", DS._inr(float(doc.get("rounding_off") or 0.0)))
+        + DS.total_row("Grand Total", "", DS._inr(float(doc.get("grand_total") or 0.0)),
+                       blanks=("c-unit", "c-rate"), span=3)
     )
 
     # ⚠ `_meta()` takes PRE-ESCAPED values by contract (ABOUT.md §9), so every
@@ -1170,7 +1181,12 @@ def print_merged(id: str):
 <title>{B.page_title(str(doc.get('tax_invoice_ref') or 'Merged'))}</title>{B.HEAD_ICON}
 {DS.SHEET_STYLES}{DS.DOCSHEET_STYLES}{RA.RA_DOC_STYLES}
 <style>
-{DS.BAND_CSS}</style>{DS.COPY_STYLES}
+{DS.BAND_CSS}
+  /* A leg's heading row (RA3 — INSTALLATION — …) never ends a page alone: it
+     travels with its first line (print sweep, 17 Nov 2026 — on a long bill it
+     printed at the foot of one page, its lines starting on the next). */
+  .quotation-doc .q-table tr.sec-row {{ break-after:avoid; page-break-after:avoid; }}
+</style>{DS.COPY_STYLES}
 {approval.print_block("merged_ra", doc)}</head>
 <body>
 <main>

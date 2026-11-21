@@ -138,3 +138,51 @@ def test_no_screen_page_loses_its_print_margin(client, url):
     html = client.get(url).get_data(as_text=True)
     assert DS.PRINT_EDGE_STYLES not in html
     assert "@page { margin:0; }" not in html
+
+
+# ── The title band is clear of the banner (17 November 2026) ────────────────
+#
+# Since option A (14 Nov 2026) the banner is pulled UP by
+# `branding.LETTERHEAD_RISE` and its canvas is opaque, so on the four documents
+# whose title sits ABOVE the letterhead the picture painted over the lower half
+# of the title — measured in headless Chromium on the merged RA, the joint and
+# the older measurement sheet; the challan was hot-fixed on its own on 16 Nov
+# (a3ff1d2). The clear space is now `docsheet.BAND_CSS`'s, once, from the same
+# constant the banner reads. This pins the CSS; the browser half (no title glyph
+# under the picture) is `tools/print_sweep/`'s, which needs Chromium.
+BAND_ROUTES = [
+    ("challan",              f"/dc/print/{GOLD_DC}"),
+    ("merged RA",            f"/merged/print/{GOLD_MERGED}"),
+    ("joint measurement",    f"/measurement/print/{GOLD_MS}"),
+    ("measurement (legacy)", f"/measurement/print/{GOLD_MS_LEGACY}"),
+]
+
+
+@pytest.mark.parametrize("name,url", BAND_ROUTES, ids=[r[0] for r in BAND_ROUTES])
+def test_a_title_band_keeps_the_banners_rise_clear_below_it(client, every_doc, name, url):
+    import branding as B
+    html = client.get(url).get_data(as_text=True)
+    assert 'caption class="sheet-band' in html, f"{name}: no title band"
+    rule = f"padding-bottom:calc(3px + {B.LETTERHEAD_RISE});"
+    assert _styles(html).count(rule) == 1, (
+        f"{name}: the band must keep the banner's rise clear below it exactly "
+        f"once — none and the picture covers the title, two and a module is "
+        f"carrying its own copy again")
+    assert f"margin:max(-{B.LETTERHEAD_RISE}," in html, (
+        f"{name}: the banner no longer rises by LETTERHEAD_RISE — the band's "
+        f"clear space and the picture have drifted apart")
+
+
+def test_the_older_measurement_sheet_widens_its_measured_column_and_only_it(
+        client, every_doc):
+    """
+    "Measured" ran 1.5 mm out of the house sheet's 12 mm `.c-qty` (print
+    sweep, 17 Nov 2026). The width travels inside that one item table, so the
+    joint sheet, which shares MS_DOC_STYLES, carries none of it.
+    """
+    import measurement as MS
+    legacy = client.get(f"/measurement/print/{GOLD_MS_LEGACY}").get_data(as_text=True)
+    joint = client.get(f"/measurement/print/{GOLD_MS}").get_data(as_text=True)
+    assert '<th class="c-qty">Measured</th>' in legacy
+    assert MS.MS_QTY_CSS in legacy
+    assert MS.MS_QTY_CSS not in joint

@@ -920,17 +920,10 @@ DC_DOC_STYLES = "\n<style>\n" + DS.BAND_CSS + """
      meta against dispatch meta. */
   .quotation-doc .doc-header.dc-2col { grid-template-columns:50% 50%; }
 
-  /* ⚠ HOTFIX 16 Nov 2026: the title band's own clear space. Since the 14 Nov
-     logo move (option A) `branding.letterhead_top()` draws the banner with a
-     margin-top of -11.21875px (the 44 px the mark rose), and its white canvas
-     painted over the lower half of DELIVERY CHALLAN. The band keeps its 3px
-     and gains exactly that rise, so the banner's top edge lands where the
-     band ends. DC only: BAND_CSS (shared with the merged RA and the joint
-     sheet) and the banner are untouched. One class more specific than
-     BAND_CSS; the print-edge rule sets padding-TOP only. */
-  .quotation-doc .page-frame > caption.sheet-band {
-    padding-bottom:calc(3px + 11.21875px);
-  }
+  /* The title band's clear space under DELIVERY CHALLAN (the 16 Nov 2026
+     hotfix, a3ff1d2) is no longer here: it is `docsheet.BAND_CSS`'s, spliced
+     in above, because the merged RA and both measurement sheets had the same
+     clipped title (17 Nov 2026). One rule, so the challan is not spaced twice. */
 
   /* The receiver signs for the goods on arrival, so this sits on the LEFT of
      the signature panel where every other document prints GSTIN and PAN. No

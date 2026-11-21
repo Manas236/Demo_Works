@@ -779,3 +779,38 @@ def test_merged_ras_does_not_import_backwards():
     src = (repo / "ra.py").read_text(encoding="utf8")
     assert "merged_ras" in src, "ra.py should read STORE['merged_ras'] directly"
     assert 'url_for("merged_ra.' in src, "ra.py should link with url_for"
+
+
+# ── The printed item table is as wide as its header (17 November 2026) ──────
+#
+# The print has SEVEN columns. `docsheet.sum_row()` / `total_row()` default to
+# the sell side's eight, and called bare they gave every summary row an
+# unheaded eighth cell: the browser then drew the header and the item rows in
+# the left ~80% of the page and the totals in a column of their own (measured in
+# headless Chromium, every copy). Every row now sums to the header's width.
+
+from test_print_golden import (  # noqa: E402,F401
+    GOLD_MERGED, golden_merged, golden_ra, pinned_identity)
+
+
+def test_the_merged_print_has_no_unheaded_column(client, golden_merged):  # noqa: F811
+    import re
+    html = client.get(f"/merged/print/{GOLD_MERGED}").get_data(as_text=True)
+    tables = re.findall(r'<table class="q-table">(.*?)</table>', html, re.S)
+    assert len(tables) == 3, "one item table per copy"
+    for t in tables:
+        heads = len(re.findall(r"<th\b", t))
+        assert heads == 7
+        for row in re.findall(r"<tr\b.*?</tr>", t.split("</thead>", 1)[1], re.S):
+            width = sum(int(m or 1) for m in re.findall(
+                r'<td\b(?:[^>]*?colspan="(\d+)")?[^>]*>', row))
+            assert width == heads, f"a row {width} cells wide under {heads} heads: {row[:120]}"
+
+
+def test_a_leg_heading_never_ends_a_printed_page_alone(client, golden_merged):  # noqa: F811
+    """Print sweep, 17 Nov 2026: on a long bill "RA3 — INSTALLATION — …" printed
+    at the foot of a page with its lines on the next. Chromium honours this
+    (measured); the rule is the merged print's own, the only `tr.sec-row`."""
+    html = client.get(f"/merged/print/{GOLD_MERGED}").get_data(as_text=True)
+    assert ".quotation-doc .q-table tr.sec-row { break-after:avoid; page-break-after:avoid; }" in html
+    assert '<tr class="sec-row">' in html

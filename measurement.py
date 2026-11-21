@@ -1664,6 +1664,16 @@ MS_COLUMNS = (("c-sno", "Sr.No."), ("c-desc", "Description"),
               ("c-qty", "Measured"), ("c-unit", "Unit"),
               ("c-avail", "In BOQ"))
 
+# The quantity column is headed "Measured", not "Qty", and the house sheet's
+# 12mm `.c-qty` is a width for "Qty": the bold head ran 1.5mm out of its cell,
+# the border through its last letter (print sweep, 17 Nov 2026). Carried INSIDE
+# this one table through `items_table(css=)`, `docsheet.MAKE_CSS`'s way, so the
+# joint sheet — which shares `MS_DOC_STYLES` and draws no such table — does not
+# move by a byte.
+MS_QTY_CSS = """\
+        .quotation-doc .items-wrap .q-table .c-qty { width:16mm; }
+"""
+
 
 # =============================================================================
 # THE SIGN-OFF — typed on the form, stored on the sheet (30 September 2026)
@@ -2161,7 +2171,7 @@ def _legacy_document_html(ms: dict) -> str:
 
     <div class="doc-title">MEASUREMENT OF WORK DONE</div>
 
-{DS.items_table(MS_COLUMNS, rows)}
+{DS.items_table(MS_COLUMNS, rows, css=MS_QTY_CSS)}
   </div>{note_html}
 
 {DS.sig_block(P.esc(ms.get("company_branch")), P.esc(ms.get("auth_signatory")),

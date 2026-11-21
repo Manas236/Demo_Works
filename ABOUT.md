@@ -802,7 +802,16 @@ address and contact lines below it — §6 *The letterhead banner*.
 
 **What is NOT in it, and this is the load-bearing part:** any tax arithmetic,
 any per-chain business logic, any route. The totals *rows* are furniture and
-live here (`sum_row`, `total_row`); deciding what goes in them does not. The RA
+live here (`sum_row`, `total_row`); deciding what goes in them does not.
+⚠ **Their defaults are the sell side's EIGHT columns** — a table with any
+other count must pass `blanks=` and `span=` so every summary row is exactly as
+wide as the header. The merged RA's seven-column print called them bare until
+17 November 2026, and the extra unheaded cell squeezed its whole item table
+into the left ~80% of every copy; `tests/test_merged_ra.py::
+test_the_merged_print_has_no_unheaded_column` now counts the cells. The same
+pass gave the merged print's leg heading row (`tr.sec-row`, "RA3 — INSTALLATION
+— …") `break-after:avoid`, so on a long bill it no longer ends a page alone with
+its lines on the next — Chromium honours it, measured. The RA
 chain's tax block is **per line, carrying HSN/SAC per claim row**; the sell
 chain's is **document-level** off one `tax_info` dict. That difference is the
 whole reason `ra.py` may not import `invoice.py`, and folding both into a
@@ -883,6 +892,18 @@ of the `<thead>`, would put the band **inside the letterhead block**
 hashing identically to the tax invoice's. The caption sits before that marker,
 so the letterhead is untouched. `DS.BAND_CSS` carries the rule, spliced into
 the one sheet that asks for a band.
+
+⚠ **The band keeps the banner's rise clear below it** (17 November 2026).
+Since option A (§6) the banner is pulled UP by `branding.LETTERHEAD_RISE`
+(`11.21875px`) and its canvas is opaque white, so a band directly above it lost
+the lower half of its title and its copy label — DELIVERY CHALLAN first
+(hot-fixed on the challan alone, 16 Nov, `a3ff1d2`), and the same on MERGED TAX
+INVOICE, JOINT MEASUREMENT SHEET and MEASUREMENT SHEET, measured in headless
+Chromium. `BAND_CSS` now ends with `caption.sheet-band { padding-bottom:
+calc(3px + LETTERHEAD_RISE) }`, from the constant the banner itself reads, and
+the challan's own copy of the rule is gone — one rule, so nothing is spaced
+twice. `tests/test_print_edge.py::test_a_title_band_keeps_the_banners_rise_clear_below_it`
+holds it at exactly one copy on all four.
 
 ⚠ It does **not** repeat on page two, and the letterhead does. A caption is
 painted once; only `display:table-header-group` repeats. That is a real
@@ -12607,6 +12628,12 @@ installation claim: what was found on site, against BOQ lines, going through an
 approval ladder, and — once approved — the ceiling `ra.overclaims()` checks every
 installation claim against. See §2j for the two guards and where each lives.
 
+**The older one-table sheet's "Measured" column is 16 mm, not the house 12 mm**
+(17 November 2026). The bold head ran 1.5 mm out of `.c-qty`, the border through
+its last letter. `MS_QTY_CSS` travels inside that one item table through
+`DS.items_table(css=)` — `MAKE_CSS`'s way — because `MS_DOC_STYLES` is shared
+with the joint sheet, whose golden must not move for a table it never draws.
+
 **Import grid from Excel (18 October 2026)** — `/measurement/create` carries a
 button to `/import/measurement?boq=<id>`, and `create_ms(imported=…)` renders
 the form with the site's own sheet in the joint grid (`data["_grid"]`); the
@@ -14367,6 +14394,22 @@ changed; a tagline somebody saved at `/settings` is untouched, because
 that never saved one reads the new default with no write at all.
 
 ### The letterhead banner — `letterhead_top()` (21 October 2026)
+
+⚠ **16–17 November 2026 — a TITLE BAND above the banner was being painted
+over.** Option A's `margin-top:-11.21875px` (below) lifts the picture into
+whatever sits above it, and on a document whose title is a band ABOVE the
+letterhead the picture's white canvas covered the title's lower half. On
+**16 Nov** the printed DELIVERY CHALLAN was clipped and hot-fixed on prod with a
+challan-only rule in `challan.DC_DOC_STYLES` (`a3ff1d2`, pushed to GitHub on
+17 Nov). The **17 Nov** print sweep found the merged RA (title and every copy
+label), the joint measurement sheet and the older measurement sheet clipped the
+same way. The banner was **not** changed — its rise is what keeps the name where
+the client signed it off on every other document. Instead the figure is named
+once, `branding.LETTERHEAD_RISE`, used by `letterhead_top()` (output byte for
+byte as before — every `letterhead` digest held) and by `docsheet.BAND_CSS`,
+which gives every band that much clear space below it (§2d). The challan's
+hotfix rule moved there; goldens re-baselined, `head` block only: challan, joint
+measurement sheet, merged RA.
 
 ⚠ **14 November 2026 — the SF mark is 15 mm LEFT and 3 mm HIGHER (option A)**
 (Yogesh, CLIENT_CHANGES.md §0 seventy-fourth block, no charge). The 8 November
@@ -17596,6 +17639,35 @@ text is unchanged, and every reference to them was moved with them.*
     **Nothing else in the file was audited for the same staleness** — only the
     sixteen documents this pass re-baselined were measured, and of those, this
     was the only one.
+119. 🟡 **The 17 November 2026 print sweep — what it found and did NOT fix —
+    OPEN.** Every print route (13 documents, 64 variants, 242 A4 pages in
+    headless Chromium: normal, 64-line stress, sparse, signed, draft,
+    cancelled, every copy) was rendered with `tools/print_sweep/` and looked
+    at. Fixed in that pass: the title band under the banner (§2d, §6), the
+    merged RA's unheaded eighth column and its orphaned leg heading (§2d), and
+    the older measurement sheet's "Measured" column (§5 `/measurement`).
+    Found and deliberately left, each a layout or content decision, not a clip:
+    - **A signature panel alone on the last page.** The golden 3-line TAX
+      INVOICE prints GSTIN/PAN and the signature panel on a page of their own
+      (two pages per copy, six for the set), and so does the golden PROFORMA
+      (two pages); long BOQ, PO and RA bills end the same way. The panel is
+      `break-inside:avoid` and does not fit under the terms, so nothing is cut
+      — it moves whole. Every page count was measured unchanged by the 14 Nov
+      logo move, so this predates it. Pulling the panel back means shortening
+      the terms, the margins or the type on signed-off documents: a decision
+      for the client, not a print fix.
+    - **Figures past their column.** A TOTAL quantity of 7 digits (10,00,000
+      units on one document) runs 3.3 px past the Qty column on the tax
+      invoice, proforma, quotation and PO; an amount of Rs 100 crore or more
+      (13 digits) runs 5.1 px past the Amount column on the RA bill and the
+      work order. Widening those columns moves every pinned sell-side document
+      for a figure this client's work does not reach, and the quotation's
+      widths are in the frozen `quotation.py`.
+    - ⚠ **`quotation._amount_in_words()` is wrong from Rs 1,000 crore and
+      CRASHES from Rs 2,000 crore** — "Ten Hundred Crore" for 1,000 crore, then
+      `IndexError` in `_three()` and a 500 on the print route. Content, not
+      layout, and in the frozen `quotation.py`; every document's words come
+      from it.
 
 ## 8. Stale docs — do not trust these two files
 

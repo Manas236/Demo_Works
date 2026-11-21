@@ -1433,8 +1433,13 @@ def golden_dc(client, pinned_identity):
 #   items tables (one per copy) put back to the old bytes is 224faaf4353a2f58
 #   exactly. `signature` moved only because it is the last marker and runs to
 #   the end of the page, through copies 2 and 3's items tables.
-DC_WHOLE, DC_LEN = "24cefc7b6a33e6be", 182918   # was 224faaf4353a2f58 / 182465 (DC two qty, 17 Nov 2026), was f8f4c2bf04f2df82 / 181771 (DC title-band hotfix, 16 Nov 2026), was c78d668eba9bd13f / 177721 (logo option A, 14 Nov 2026), was 95b91fa72436dece / 175909 (logo top-aligned, 8 Nov 2026), was 220de3e9f51f5773 / 169225 (SF mark 1.5x, 29 Oct 2026)
-DC_BLOCKS = {"head":       "30701f66db4e3e82",   # was 094e1c25e5ac35b1 (DC title-band hotfix, 16 Nov 2026), was 70716c3255fe6d74 (page edge),
+# ⚠ MERGED 21 Nov 2026 (prod hotfixes + origin print fixes): DC two qty (prod,
+#   6583ac3) and the title band clear of the banner (origin, 3e88a08) both move
+#   this page; the whole-page figure is the merged render, `head` is origin's
+#   (DC two qty never touched it). 183100 = 182465 + 453 (prod) + 182 (origin)
+#   exactly, and every block hashes as one side or the other recorded.
+DC_WHOLE, DC_LEN = "d0b340ad1e018079", 183100   # was 24cefc7b6a33e6be / 182918 (DC two qty, prod), was 45a2eb5d13cbf471 / 182647 (title band clear of the banner, origin), was 224faaf4353a2f58 / 182465 (17 Nov 2026), was f8f4c2bf04f2df82 / 181771 (DC title-band hotfix, 16 Nov 2026), was c78d668eba9bd13f / 177721 (logo option A, 14 Nov 2026), was 95b91fa72436dece / 175909 (logo top-aligned, 8 Nov 2026), was 220de3e9f51f5773 / 169225 (SF mark 1.5x, 29 Oct 2026)
+DC_BLOCKS = {"head":       "eda568c7ae5a1aba",   # was 30701f66db4e3e82 (title band clear of the banner, 17 Nov 2026), was 094e1c25e5ac35b1 (DC title-band hotfix, 16 Nov 2026), was 70716c3255fe6d74 (page edge),
                                                  # was f3f5e6b5c49c9e9f
              "letterhead": "d053b75f9692357e",   # was 688623f90590b397 (logo option A, 14 Nov 2026), was 04efecf6b5fbb2ff (logo top-aligned, 8 Nov 2026), was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
@@ -1642,8 +1647,8 @@ MS_SHEET_BLOCKS = [
 #     see the note above TI_WHOLE
 # was 5a316b5a51d1a0a1 / 96055 before the 26 Oct 2026 PAGE EDGE — see above
 #     GOLD_TI; +1,057 here, the extra 104 being LANDSCAPE_CSS's margin 0
-MS_WHOLE, MS_LEN = "85eb11a74dbc185a", 101294   # was 53999c11347321f7 / 99944 (logo option A, 14 Nov 2026), was dc3d7d73d859ec72 / 99340 (logo top-aligned, 8 Nov 2026), was 2e0d4e5be75d70fe / 97112 (SF mark 1.5x, 29 Oct 2026)
-MS_BLOCKS = {"head":       "6eca6ee86d24faf3",   # was db302526da349396 (page edge),
+MS_WHOLE, MS_LEN = "fb64b0337c68eb64", 101856   # was 85eb11a74dbc185a / 101294 (title band clear of the banner, 17 Nov 2026), was 53999c11347321f7 / 99944 (logo option A, 14 Nov 2026), was dc3d7d73d859ec72 / 99340 (logo top-aligned, 8 Nov 2026), was 2e0d4e5be75d70fe / 97112 (SF mark 1.5x, 29 Oct 2026)
+MS_BLOCKS = {"head":       "da5c3d32cf76fd5e",   # was 6eca6ee86d24faf3 (title band clear of the banner, 17 Nov 2026), was db302526da349396 (page edge),
                                                  # was 66e13ccf7dbdaaa3
              "letterhead": "d053b75f9692357e",   # was 688623f90590b397 (logo option A, 14 Nov 2026), was 04efecf6b5fbb2ff (logo top-aligned, 8 Nov 2026), was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
              "foot-strip": "3e5d06b5f8519396",   # was 1efaaf73d3a0a076
@@ -2061,15 +2066,15 @@ MERGED_SHEET_BLOCKS = [m for m in SHEET_BLOCKS if m[0] != "doc-box"]
 # was a84dce3a8c55d8c2 / 173631 before the 21 Oct 2026 LETTERHEAD BANNER pass —
 #     see the note above TI_WHOLE
 # was 1646b229cb85a727 / 176811 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-MERGED_WHOLE, MERGED_LEN = "a7e08fa2196f6872", 190310   # was c6f7d82f29d09a18 / 186260 (logo option A, 14 Nov 2026), was ad08a1f9d8af016d / 184448 (logo top-aligned, 8 Nov 2026), was 5b06ac443cb31921 / 177764 (SF mark 1.5x, 29 Oct 2026)
-MERGED_BLOCKS = {"head":       "ba3818da0d5fffd1",   # was 482cb74cab6f5f0e (page edge),
+MERGED_WHOLE, MERGED_LEN = "e843e4ec05ed7e21", 191173   # was 9514463b564545f8 / 190857 (leg heading kept with its first line, 17 Nov 2026), was 0abcabb67b666b39 / 190872 (seven-cell summary rows, 17 Nov 2026), was a7e08fa2196f6872 / 190310 (title band clear of the banner, 17 Nov 2026), was c6f7d82f29d09a18 / 186260 (logo option A, 14 Nov 2026), was ad08a1f9d8af016d / 184448 (logo top-aligned, 8 Nov 2026), was 5b06ac443cb31921 / 177764 (SF mark 1.5x, 29 Oct 2026)
+MERGED_BLOCKS = {"head":       "659a765961fea913",   # was ead2def0bea230f4 (leg heading kept with its first line, 17 Nov 2026), was ba3818da0d5fffd1 (title band clear of the banner, 17 Nov 2026), was 482cb74cab6f5f0e (page edge),
                                                      # was 1e9bbe98af7f4e8d,
                                                      # was e38255e4e2ed0d90
                  "letterhead": "d053b75f9692357e",   # was 688623f90590b397 (logo option A, 14 Nov 2026), was 04efecf6b5fbb2ff (logo top-aligned, 8 Nov 2026), was 339c37010c483651 (SF mark 1.5x, 29 Oct 2026), was 3c080a57f60c89e9
                  "foot-strip": "a3f2d37e04a583e1",   # was 11c5bd67c2fabaa9
                  "party":      "aa58dd01cfddecc3",
-                 "items":      "e0f2b72ef4632192",   # was 30ecad09926182e7
-                 "signature": "930dd5dfc837f66a"}   # was 459206ffec7ac130 (logo option A, 14 Nov 2026), was 18f50170a6673407 (logo top-aligned, 8 Nov 2026), was 90a0f2169769a8aa (SF mark 1.5x, 29 Oct 2026), was a6452d6103bae384,
+                 "items":      "117110748ece40eb",   # was e0f2b72ef4632192 (seven-cell summary rows, 17 Nov 2026), was 30ecad09926182e7
+                 "signature": "50bfd525eae58d1b"}   # was 930dd5dfc837f66a (seven-cell summary rows, 17 Nov 2026), was 459206ffec7ac130 (logo option A, 14 Nov 2026), was 18f50170a6673407 (logo top-aligned, 8 Nov 2026), was 90a0f2169769a8aa (SF mark 1.5x, 29 Oct 2026), was a6452d6103bae384,
                                                      # was 0598f5bb4f174a53,
                                                      # was d5b89b346e0b46ff
 
