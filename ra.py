@@ -3734,7 +3734,7 @@ def _entry_form(boq: dict, leg: str, prev: dict, entered: dict, error: str,
         <div class="form-group"><label for="date">Date</label>
           <input type="date" id="date" name="date" value="{_esc(date_val)}"/></div>
         <div class="form-group"><label for="leg_shown">Leg</label>
-          <input type="text" id="leg_shown" value="{_esc(leg)}" disabled
+          <input type="text" id="leg_shown" value="{_esc(leg + (" (SITC)" if leg == "supply" and BQ.rate_basis_of(boq) == "sitc" else ""))}" disabled
                  title="A bill covers one leg. Start a separate bill for the other."/></div>
       </div>
     </div>
@@ -4534,7 +4534,7 @@ def create_ra(imported: dict = None):
             f'<td class="cl-num">{_esc(b.get("rev_no") or 0)}</td>'
             f'<td class="cl-num">{len(bills_of(bid))}</td>'
             f'<td class="cl-amt">{_inr(b.get("subtotal") or 0.0)}</td>'
-            f'<td style="white-space:nowrap;"><a class="btn btn-ghost" href="{url_for("ra.create_ra", boq=bid, leg="supply")}">Supply</a>'
+            f'<td style="white-space:nowrap;"><a class="btn btn-ghost" href="{url_for("ra.create_ra", boq=bid, leg="supply")}">{BQ.supply_leg_label(b)}</a>'
             f' <a class="btn btn-ghost" href="{url_for("ra.create_ra", boq=bid, leg="installation")}">Installation</a></td></tr>'
             for bid, b in sorted(boqs.items(), key=lambda kv: kv[1].get("ref", ""))
             if bid in latest_ids)

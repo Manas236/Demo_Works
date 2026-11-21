@@ -254,6 +254,98 @@ def is_as_is(boq: dict) -> bool:
     return isinstance(boq, dict) and boq.get(BLANK_MODEL_KEY) == BLANK_MODEL
 
 
+# ── The RATE BASIS — which track(s) the rates are for (21 November 2026) ────
+#
+# CLIENT_CHANGES.md §0, eighty-third block (prod hotfix). ⚠ **Not
+# `rate_basis_label`**, which is the heading of the base-rate column ("Mohali
+# Rates") and is untouched. `rate_basis` says what a line's rates ARE:
+#
+#   split              Supply and Installation priced separately — every BOQ
+#                      before this block, and the default. Prints as it did.
+#   supply_only        rates are on the Supply track only.
+#   installation_only  rates are on the Installation track only.
+#   sitc               ONE combined rate (Supply, Installation, Testing and
+#                      Commissioning), STORED ON THE SUPPLY TRACK, the
+#                      installation rate blank. Printed as one "Supply +
+#                      Installation (SITC)" pair; RA bills it on the supply leg.
+#
+# ⚠ **A missing value reads as `split`, and nothing backfills it.** Changing the
+#   basis never changes an amount — only labels and which columns print — and
+#   `rate_basis_problems()` refuses a basis that would hide a non-zero rate.
+RATE_BASIS_KEY = "rate_basis"
+RATE_BASES = ("split", "supply_only", "installation_only", "sitc")
+DEFAULT_RATE_BASIS_KIND = "split"
+RATE_BASIS_LABELS = {
+    "split": "Supply and Installation (separate rates)",
+    "supply_only": "Supply only",
+    "installation_only": "Installation only",
+    "sitc": "Supply + Installation (SITC) — one combined rate",
+}
+SITC_TRACK_LABEL = "Supply + Installation (SITC)"
+
+
+def rate_basis_of(boq) -> str:
+    """The record's rate basis — `split` when absent or not one of the four."""
+    v = boq.get(RATE_BASIS_KEY) if isinstance(boq, dict) else None
+    return v if v in RATE_BASES else DEFAULT_RATE_BASIS_KIND
+
+
+def rate_basis_value(raw) -> str:
+    """A posted basis, or "" when it is not one of the four."""
+    v = str(raw or "").strip()
+    return v if v in RATE_BASES else ""
+
+
+def supply_leg_label(boq) -> str:
+    """What the SUPPLY leg is called on this BOQ's links: "Supply (SITC)" on
+    an SITC schedule, where the supply leg carries the combined rate."""
+    return "Supply (SITC)" if rate_basis_of(boq) == "sitc" else "Supply"
+
+
+def _nonzero(v) -> bool:
+    try:
+        return v is not None and abs(float(v)) >= 0.005
+    except (TypeError, ValueError):
+        return bool(str(v).strip())
+
+
+def _track_priced(li: dict, track: str) -> bool:
+    """Does this line carry a non-zero unit rate OR base rate on `track`?"""
+    return (_nonzero(li.get(f"{track}_rate"))
+            or _nonzero(li.get(f"{track}_base_rate")))
+
+
+def rate_basis_problems(lines, basis: str) -> str:
+    """
+    Why `basis` cannot be saved over `lines`, or "". `sitc` and `supply_only`
+    are refused while any line carries a non-zero INSTALLATION rate (unit or
+    base); `installation_only` while any carries a non-zero SUPPLY rate. The
+    message names the item numbers (escaped — it is rendered as markup).
+    Nothing is ever zeroed to make a basis fit.
+    """
+    other = {"sitc": "install", "supply_only": "install",
+             "installation_only": "supply"}.get(basis)
+    if not other:
+        return ""
+    bad = []
+    for k, li in enumerate(lines or []):
+        if not isinstance(li, dict) or li.get("is_header"):
+            continue
+        if _track_priced(li, other):
+            sec = str(li.get("section") or "")
+            no = _item_no(li.get("item_no")) or f"line {k + 1}"
+            bad.append(f"{sec} {no}".strip())
+    if not bad:
+        return ""
+    shown = ", ".join(bad[:30]) + (f" and {len(bad) - 30} more" if len(bad) > 30 else "")
+    track = "an installation" if other == "install" else "a supply"
+    return P.esc(f"Rate basis “{RATE_BASIS_LABELS[basis]}” cannot be saved: "
+                 f"{len(bad)} line{'' if len(bad) == 1 else 's'} carr"
+                 f"{'ies' if len(bad) == 1 else 'y'} {track} rate — item"
+                 f"{'' if len(bad) == 1 else 's'} {shown}. Clear those rates "
+                 f"yourself or choose another basis; nothing is changed for you.")
+
+
 # =============================================================================
 # HELPERS — identity and numbers
 # =============================================================================
@@ -2126,7 +2218,9 @@ def _disc_cell(pct, as_is: bool = False) -> str:
 
 def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
                    show_rate_breakup: bool = False, show_s_disc: bool = False,
-                   show_i_disc: bool = False, screen_notes: bool = False) -> str:
+                   show_i_disc: bool = False, screen_notes: bool = False,
+                   show_supply: bool = True, show_install: bool = True,
+                   supply_name: str = "Supply") -> str:
     """
     One section: its title band, its own column heads, its lines, its subtotal.
 
@@ -2161,6 +2255,13 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
       byte-identically (`is_as_is()` is False for it). `screen_notes` — passed
       by `/boq/view` alone — adds "excludes N lines with no amount" under a
       subtotal that skipped lines; the print never draws it.
+
+    ⚠ **The rate basis (21 November 2026, §0 83rd block)** — `show_supply` /
+      `show_install` drop a whole track (its rate, base, escalation, discount
+      and amount columns, and its share of every span), and `supply_name`
+      renames the supply track ("Supply + Installation (SITC)"). All three
+      default to the split sheet, so a `split` BOQ is **byte-identical**: each
+      piece below is the same string it always was unless a track is hidden.
     """
     code   = sec.get("code") or ""
     areas  = list(sec.get("areas") or [])
@@ -2182,6 +2283,14 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
                       + (2 if show_s_disc else 0))
     n_install_cols = (1 + (1 if show_base else 0) + (1 if show_i_esc else 0)
                       + (2 if show_i_disc else 0))
+    # A hidden track contributes NO columns: rate, breakup, discount AND its
+    # amount (`s_amt_cols` / `i_amt_cols`) — every span below adds these.
+    if not show_supply:
+        n_supply_cols, show_s_esc, show_s_disc = 0, False, False
+    if not show_install:
+        n_install_cols, show_i_esc, show_i_disc = 0, False, False
+    s_amt_cols = 1 if show_supply else 0
+    i_amt_cols = 1 if show_install else 0
 
     # ── Column widths ──────────────────────────────────────────────────
     # An explicit <colgroup>, per section, because the column COUNT is a
@@ -2202,24 +2311,26 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
     cols = ['<col class="cw-sno"/>', '<col class="cw-desc"/>']
     cols += ['<col class="cw-area"/>'] * len(areas)                 # one per area
     cols += ['<col class="cw-qty"/>', '<col class="cw-unit"/>']
-    if show_base:
-        cols += ['<col class="cw-base"/>']                          # supply base
-    if show_s_esc:
-        cols += ['<col class="cw-esc"/>']
-    cols += ['<col class="cw-rate"/>']                              # supply rate
-    if show_s_disc:
-        # The existing width classes — no new rule in any stylesheet, so no
-        # page golden that loads one can move (R6).
-        cols += ['<col class="cw-esc"/>', '<col class="cw-rate"/>']  # disc %, net
-    cols += ['<col class="cw-amt"/>']                               # supply amount
-    if show_base:
-        cols += ['<col class="cw-base"/>']                          # install base
-    if show_i_esc:
-        cols += ['<col class="cw-esc"/>']
-    cols += ['<col class="cw-rate"/>']                              # install rate
-    if show_i_disc:
-        cols += ['<col class="cw-esc"/>', '<col class="cw-rate"/>']
-    cols += ['<col class="cw-amt"/>']                               # install amount
+    if show_supply:
+        if show_base:
+            cols += ['<col class="cw-base"/>']                      # supply base
+        if show_s_esc:
+            cols += ['<col class="cw-esc"/>']
+        cols += ['<col class="cw-rate"/>']                          # supply rate
+        if show_s_disc:
+            # The existing width classes — no new rule in any stylesheet, so no
+            # page golden that loads one can move (R6).
+            cols += ['<col class="cw-esc"/>', '<col class="cw-rate"/>']  # disc %, net
+        cols += ['<col class="cw-amt"/>']                           # supply amount
+    if show_install:
+        if show_base:
+            cols += ['<col class="cw-base"/>']                      # install base
+        if show_i_esc:
+            cols += ['<col class="cw-esc"/>']
+        cols += ['<col class="cw-rate"/>']                          # install rate
+        if show_i_disc:
+            cols += ['<col class="cw-esc"/>', '<col class="cw-rate"/>']
+        cols += ['<col class="cw-amt"/>']                           # install amount
     colgroup = "<colgroup>" + "".join(cols) + "</colgroup>"
 
     # ── Column heads ───────────────────────────────────────────────────
@@ -2249,7 +2360,7 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
     rs        = ' rowspan="2"' if need_row2 else ""
 
     if grouped:
-        supply_th  = f'<th colspan="{n_supply_cols}">Supply</th>'
+        supply_th  = f'<th colspan="{n_supply_cols}">{supply_name}</th>'
         install_th = f'<th colspan="{n_install_cols}">Installation</th>'
         # Grouped used to mean "the breakup is shown", so the base heads were
         # unconditional; a discount groups the PRINT too (R3), which shows no
@@ -2257,14 +2368,25 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
         # same bytes as before.
         base_th    = f'<th class="b-base">{P.esc(basis)}</th>' if show_base else ""
         disc_ths   = '<th class="b-esc">Disc %</th><th class="b-rate">Net Rate</th>'
-        rate_ths   = (f'{base_th}{s_esc_th}'
+        s_rate_ths = (f'{base_th}{s_esc_th}'
                       f'<th class="b-rate">U/ Rate</th>{disc_ths if show_s_disc else ""}'
-                      f'{base_th}{i_esc_th}'
-                      f'<th class="b-rate">U/ Rate</th>{disc_ths if show_i_disc else ""}')
+                      if show_supply else "")
+        i_rate_ths = (f'{base_th}{i_esc_th}'
+                      f'<th class="b-rate">U/ Rate</th>{disc_ths if show_i_disc else ""}'
+                      if show_install else "")
+        rate_ths   = s_rate_ths + i_rate_ths
     else:
-        supply_th  = f'<th class="b-rate"{rs}>Supply<br/>U/ Rate</th>'
+        supply_th  = f'<th class="b-rate"{rs}>{supply_name}<br/>U/ Rate</th>'
         install_th = f'<th class="b-rate"{rs}>Installation<br/>U/ Rate</th>'
         rate_ths   = ""
+    # The amount heads, and a hidden track's heads gone with it.
+    s_amt_th = (f'<th class="b-amt"{rs}>'
+                f'{"Supply Amount" if supply_name == "Supply" else "Amount (SITC)"}</th>')
+    i_amt_th = f'<th class="b-amt"{rs}>Installation Amount</th>'
+    if not show_supply:
+        supply_th = s_amt_th = ""
+    if not show_install:
+        install_th = i_amt_th = ""
 
     row2_html = f"<tr>{area_ths}{rate_ths}</tr>" if need_row2 else ""
 
@@ -2277,9 +2399,9 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
           <th class="b-qty"{rs}>Total Qty</th>
           <th class="b-unit"{rs}>Unit</th>
           {supply_th}
-          <th class="b-amt"{rs}>Supply Amount</th>
+          {s_amt_th}
           {install_th}
-          <th class="b-amt"{rs}>Installation Amount</th>
+          {i_amt_th}
         </tr>
         {row2_html}
       </thead>"""
@@ -2304,7 +2426,7 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
             #   description itself + areas + qty + unit
             #   + supply([base][,esc],rate) + supply amount
             #   + install([base][,esc],rate) + install amount
-            span = 1 + len(areas) + 2 + n_supply_cols + 1 + n_install_cols + 1
+            span = 1 + len(areas) + 2 + n_supply_cols + s_amt_cols + n_install_cols + i_amt_cols
             body += f"""
             <tr class="{row_cls}">
               <td class="b-sno">{P.esc(_item_no(li.get("item_no")))}</td>
@@ -2341,6 +2463,15 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
                       f'<td class="b-rate">{_rate_cell(net_rate(li, "install"), as_is)}</td>'
                       if show_i_disc else "")
 
+        s_rate_td = f'<td class="b-rate">{_rate_cell(li.get("supply_rate"), as_is)}</td>'
+        s_amt_td  = f'<td class="b-amt">{_amt_cell(li.get("supply_amount"))}</td>'
+        i_rate_td = f'<td class="b-rate">{_rate_cell(li.get("install_rate"), as_is)}</td>'
+        i_amt_td  = f'<td class="b-amt">{_amt_cell(li.get("install_amount"))}</td>'
+        if not show_supply:
+            s_base_td = s_esc_td = s_rate_td = s_disc_tds = s_amt_td = ""
+        if not show_install:
+            i_base_td = i_esc_td = i_rate_td = i_disc_tds = i_amt_td = ""
+
         body += f"""
         <tr class="{row_cls}">
           <td class="b-sno">{P.esc(_item_no(li.get("item_no")))}</td>
@@ -2350,12 +2481,12 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
           <td class="b-unit">{P.esc(li.get("unit"))}</td>
           {s_base_td}
           {s_esc_td}
-          <td class="b-rate">{_rate_cell(li.get("supply_rate"), as_is)}</td>{s_disc_tds}
-          <td class="b-amt">{_amt_cell(li.get("supply_amount"))}</td>
+          {s_rate_td}{s_disc_tds}
+          {s_amt_td}
           {i_base_td}
           {i_esc_td}
-          <td class="b-rate">{_rate_cell(li.get("install_rate"), as_is)}</td>{i_disc_tds}
-          <td class="b-amt">{_amt_cell(li.get("install_amount"))}</td>
+          {i_rate_td}{i_disc_tds}
+          {i_amt_td}
         </tr>"""
 
     # ── Section subtotal — COMPUTED, never stored ──────────────────────
@@ -2363,12 +2494,20 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
     # Label spans everything up to the supply amount, exactly as the client's
     # own sheet merges A:I for its "BASIC VALUE SUBTOTAL (A)" row.
     sum_span = 2 + len(areas) + 2 + n_supply_cols
+    if show_supply and show_install:
+        sum_tail = f"""<td class="b-amt">{_inr(sup)}</td>
+      <td colspan="{n_install_cols}"></td>
+      <td class="b-amt">{_inr(ins)}</td>"""
+    elif show_supply:
+        sum_tail = f'<td class="b-amt">{_inr(sup)}</td>'
+    else:
+        # Installation only: the label runs up to the installation amount.
+        sum_span = 2 + len(areas) + 2 + n_install_cols
+        sum_tail = f'<td class="b-amt">{_inr(ins)}</td>'
     body += f"""
     <tr class="row-secsum">
       <td class="secsum-lbl" colspan="{sum_span}">BASIC VALUE SUBTOTAL ({P.esc(code)}) &gt;&gt;&gt;&gt;</td>
-      <td class="b-amt">{_inr(sup)}</td>
-      <td colspan="{n_install_cols}"></td>
-      <td class="b-amt">{_inr(ins)}</td>
+      {sum_tail}
     </tr>"""
 
     # A4, on the SCREEN only: the subtotal says what it skipped. Spliced with
@@ -3044,6 +3183,16 @@ def _document_html(boq: dict, show_rate_breakup: bool = False,
 
     if screen_notes:
         disc_flags["screen_notes"] = True
+    # The RATE BASIS (21 Nov 2026, §0 83rd block). `split` passes nothing new,
+    # so its sheet is byte-identical; the other three hide the empty track,
+    # and SITC renames the supply track to the combined one.
+    basis = rate_basis_of(boq)
+    if basis in ("sitc", "supply_only"):
+        disc_flags["show_install"] = False
+    elif basis == "installation_only":
+        disc_flags["show_supply"] = False
+    if basis == "sitc":
+        disc_flags["supply_name"] = SITC_TRACK_LABEL
     sections_html = "".join(
         _section_table(boq, s, show_s_esc, show_i_esc, show_rate_breakup, **disc_flags)
         for s in _sections_of(boq)
@@ -3079,13 +3228,25 @@ def _document_html(boq: dict, show_rate_breakup: bool = False,
           <td class="bg-tag"></td><td class="bg-amt">{_inr(rounded)}</td>
         </tr>"""
 
+    # The track pair on the grand total — both on a `split` BOQ (the bytes it
+    # always printed); one, in the same five-cell row, on the other three.
+    g_sup = f'<td class="bg-tag">Supply</td><td class="bg-amt">{_inr(sup)}</td>'
+    g_ins = f'<td class="bg-tag">Installation</td><td class="bg-amt">{_inr(ins)}</td>'
+    g_none = '<td class="bg-tag"></td><td class="bg-amt"></td>'
+    if basis == "sitc":
+        g_sup, g_ins = (f'<td class="bg-tag">{SITC_TRACK_LABEL}</td>'
+                        f'<td class="bg-amt">{_inr(sup)}</td>'), g_none
+    elif basis == "supply_only":
+        g_ins = g_none
+    elif basis == "installation_only":
+        g_sup = g_none
     grand_html = f"""
     <div class="boq-grand">
       <table>
         <tr>
           <td class="bg-lbl">{grand_lbl}</td>
-          <td class="bg-tag">Supply</td><td class="bg-amt">{_inr(sup)}</td>
-          <td class="bg-tag">Installation</td><td class="bg-amt">{_inr(ins)}</td>
+          {g_sup}
+          {g_ins}
         </tr>
         <tr>
           <td class="bg-lbl">TOTAL BASIC VALUE</td>
@@ -3545,9 +3706,11 @@ def view_boq(id: str):
         #   Re-arming `ra.C1_PREREQUISITE` is one line there and this bar then
         #   wants its `live=` arguments back — they are kept in the hint
         #   wording so nothing has to be reinvented.
+        # "RA · Supply (SITC)" on an SITC schedule (21 Nov 2026, §0 83rd
+        # block): the combined rate is billed on the supply leg.
         ra_sup = _raise("ra.create_ra",
                         url_for("ra.create_ra", boq=id, leg="supply"),
-                        "RA &middot; Supply")
+                        f"RA &middot; {supply_leg_label(boq)}")
         ra_ins = _raise("ra.create_ra",
                         url_for("ra.create_ra", boq=id, leg="installation"),
                         "RA &middot; Installation")
@@ -3942,6 +4105,8 @@ def _form_payload_from(src: dict) -> tuple:
         "project_name":     src.get("project_name", ""),
         "site_location":    src.get("site_location", ""),
         "rate_basis_label": src.get("rate_basis_label", ""),
+        # Carried forward by a revision and shown by the edit (21 Nov 2026).
+        RATE_BASIS_KEY:     rate_basis_of(src),
         "account_name":     src.get("account_name", ""),
         "contact_person":   src.get("contact_person", ""),
         "bill_city":        src.get("bill_city", ""),
@@ -6053,6 +6218,7 @@ BOQ_EDIT_FIELDS = (("ref", "BOQ No."), ("date", "Date"), ("project_name", "Proje
                    ("bill_gstin", "Customer GSTIN"), ("ship_acct_name", "Ship-to name"),
                    ("ship_addr", "Ship-to address"), ("ship_city", "Ship-to city"),
                    ("ship_pin", "Ship-to PIN"), ("rate_basis_label", "Rate basis"),
+                   ("rate_basis", "Rates are for (Supply / Installation / SITC)"),
                    ("payment_terms", "Payment terms"), ("delivery_terms", "Terms of delivery"),
                    ("notes", "Note"), ("project_id", "Project"),
                    ("round_off_on", "Round off to nearest rupee"),
@@ -6219,6 +6385,12 @@ def create_boq(imported: dict = None, editing: dict = None):
                                  f"quantity cannot go below {floor[lid]:g} (it is "
                                  f"{'blank' if q is None else f'{float(q):g}'} here).")
                         break
+        # The RATE BASIS (21 Nov 2026, §0 83rd block). A POST from a page that
+        # offers no select (an older page, a script) keeps the record's own.
+        # Refused — never "fixed" — when a hidden track still carries a rate.
+        basis = rate_basis_value(form.get(RATE_BASIS_KEY)) or rate_basis_of(editing)
+        if not error:
+            error = rate_basis_problems(lines, basis)
         # The ROOT's number, forward only; a revision's is its root's.
         _new_ref = str(editing.get("ref") or "")
         if not error and not editing.get("supersedes"):
@@ -6259,6 +6431,10 @@ def create_boq(imported: dict = None, editing: dict = None):
                 "auth_signatory": (form.get("auth_signatory") or "").strip(),
                 BLANK_MODEL_KEY: BLANK_MODEL,
             })
+            # Written only when it CHANGES or the record already carries it, so
+            # an old BOQ edited for something else gains no key and no log row.
+            if basis != rate_basis_of(before) or RATE_BASIS_KEY in before:
+                editing[RATE_BASIS_KEY] = basis
             sup, ins, tot = boq_totals(editing)
             editing["supply_subtotal"], editing["install_subtotal"] = sup, ins
             editing["subtotal"] = tot
@@ -6376,6 +6552,13 @@ def create_boq(imported: dict = None, editing: dict = None):
                 error = ("This revision removes lines that have already been "
                          "claimed against.")
 
+        # The RATE BASIS (21 Nov 2026, §0 83rd block): the posted select; a
+        # revision posted with none carries its predecessor's forward.
+        basis = (rate_basis_value(form.get(RATE_BASIS_KEY))
+                 or (rate_basis_of(prev) if prev is not None else DEFAULT_RATE_BASIS_KIND))
+        if not error:
+            error = rate_basis_problems(lines, basis)
+
         if not error:
             datestr = (form.get("date") or "").strip()
             bid     = str(uuid.uuid4())
@@ -6482,6 +6665,9 @@ def create_boq(imported: dict = None, editing: dict = None):
                 # Every record saved before it lacks the key and is read as it
                 # always was; nothing backfills it.
                 BLANK_MODEL_KEY:   BLANK_MODEL,
+
+                # Which track(s) the rates are for (21 Nov 2026) — see RATE_BASES.
+                RATE_BASIS_KEY:    basis,
             }
             sup, ins, tot = boq_totals(boq)
             boq["supply_subtotal"]  = sup
@@ -6739,6 +6925,16 @@ def create_boq(imported: dict = None, editing: dict = None):
                   else prefill.get("project_id")) or "").strip()
     project_html = _PJ.boq_project_options(_proj_cur)
 
+    # The RATE BASIS select (21 Nov 2026, §0 83rd block): what was posted, else
+    # the prefill (an import's choice, a revision's predecessor, the edited
+    # record), else `split`.
+    _basis_cur = (rate_basis_value(request.form.get(RATE_BASIS_KEY))
+                  if request.method == "POST" else
+                  rate_basis_value(prefill.get(RATE_BASIS_KEY))) or DEFAULT_RATE_BASIS_KIND
+    basis_html = (f'<select id="{RATE_BASIS_KEY}" name="{RATE_BASIS_KEY}">' + "".join(
+        f'<option value="{k}"{" selected" if k == _basis_cur else ""}>'
+        f'{P.esc(RATE_BASIS_LABELS[k])}</option>' for k in RATE_BASES) + "</select>")
+
     # A refused revision names every line it would have dropped and the bills
     # that claimed them. `revision_blocker_message()` writes each one in words
     # the person revising it can act on — the alert alone would say "some lines"
@@ -6845,7 +7041,18 @@ def create_boq(imported: dict = None, editing: dict = None):
           <input type="text" id="rate_basis_label" name="rate_basis_label"
                  value="{_v('rate_basis_label', DEFAULT_RATE_BASIS)}" placeholder="Mohali Rates"/>
         </div>
+        <div class="form-group span2">
+          <label for="{RATE_BASIS_KEY}">Rate basis <span style="font-weight:500;text-transform:none;">(the rates are for)</span></label>
+          {basis_html}
+        </div>
       </div>
+      <p style="margin-top:.7rem;font-size:.78rem;color:var(--muted);">
+        <b>Rate basis</b> says what each line&#39;s rate covers. <b>SITC</b> is one
+        combined Supply + Installation rate, kept on the Supply track and printed as a
+        single &ldquo;Supply + Installation (SITC)&rdquo; column; RA bills it on the
+        supply leg. Changing it never changes an amount, and a basis that would hide a
+        rate is refused with the item numbers.
+      </p>
       <p style="margin-top:.7rem;font-size:.78rem;color:var(--muted);">
         The rate basis is what the base-rate column is headed on the printed sheet.
         These schedules are commonly priced off a rate contract agreed on another

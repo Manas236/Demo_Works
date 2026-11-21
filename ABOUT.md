@@ -3024,6 +3024,25 @@ record to freeze a copy of, because the schedule is the source.
   on the printed sheet. These schedules are commonly priced off a rate contract
   agreed on *another* project ("Mohali Rates") and then escalated, so the label
   is per-BOQ data rather than a constant.
+- **Rate basis:** `rate_basis` — **which track(s) the rates are for**
+  (21 November 2026, CLIENT_CHANGES.md §0 **eighty-third** block, prod
+  hotfix). ⚠ Not `rate_basis_label` above, which is a column heading. One of
+  `boq.RATE_BASES`: `split` (Supply and Installation priced separately — the
+  default), `supply_only`, `installation_only`, `sitc` (ONE combined Supply,
+  Installation, Testing and Commissioning rate, **stored on the SUPPLY track**,
+  installation blank). `boq.rate_basis_of()` is the one reader: ⚠ **an absent
+  key reads as `split` and nothing backfills it** — the BOQs saved before this
+  block carry none, and an edit that does not change the basis writes none
+  (no log row either). Written by `/boq/create` (every new record carries it),
+  `/boq/edit` (logged through `editlog` as *Rates are for …*, with who and
+  when) and prefilled by the import. A revision carries it forward (the
+  prefill, and a POST with no select falls back to the predecessor's).
+  ⚠ **The invariant — `rate_basis_problems()`**, on both saves: `sitc` and
+  `supply_only` are refused while any non-header line carries a non-zero
+  installation unit OR base rate; `installation_only` while any carries a
+  non-zero supply one. The refusal names the items (`A 2, A 3`) and nothing is
+  ever zeroed. **The basis changes no amount** — only labels and which columns
+  print (§5 `/boq`, *The rate basis on the sheet*).
 - **Structure:** `sections` — `[{code, title, areas: [...]}]`
 - **Content:** `line_items`
 - **Money:** `supply_subtotal`, `install_subtotal`, `subtotal`
@@ -9537,6 +9556,31 @@ On the seeded 97-line Sify schedule that is **13 / 12 / 11** columns for
 sections A / B / C on the view (they declare 2 / 1 / 0 areas, and no line
 carries an installation escalation) against **10 / 9 / 8** on the print.
 
+##### The rate basis on the sheet (21 November 2026, §0 eighty-third block)
+
+`_document_html()` reads `boq.rate_basis_of()` and passes `_section_table()`
+three keyword arguments, `show_supply` / `show_install` / `supply_name`, whose
+defaults ARE the split sheet — so **a `split` BOQ, key absent or written, is
+byte-identical**: no print or page golden moved, and
+`tests/test_boq_rate_basis.py` renders one both ways and compares the bytes.
+
+| basis | section tables | grand total row |
+|---|---|---|
+| `split` | as above | Supply · Installation |
+| `sitc` | the supply track renamed **Supply + Installation (SITC)** (head `… <br/>U/ Rate`, amount head `Amount (SITC)`); every installation column gone | `Supply + Installation (SITC)` and its amount; the installation pair blank |
+| `supply_only` | installation columns gone | installation pair blank |
+| `installation_only` | supply columns gone; the subtotal label runs to the installation amount | supply pair blank |
+
+A hidden track contributes **no** column — rate, base, escalation, discount
+and amount — so every derived span (the spec header, the subtotal label, the
+spacer) still equals the `colgroup`; the test walks the occupancy grid on both
+routes. `/boq/view` draws the same sheet, so the internal copy hides the empty
+track too (its base and escalation columns stay, on the visible track). The
+five-cell `.boq-grand` table keeps its five cells. On the view's *Raise from
+this BOQ* bar, the RA picker and the RA form's *Leg* box, the supply leg reads
+**Supply (SITC)** on an SITC schedule (`boq.supply_leg_label()`). Nothing in
+any RA / PI / TI print changed.
+
 ##### ⚠ Base rate and escalation are deliberately NOT on the issued print
 
 **The client asked for this on 10 Aug 2026.** The escalated U/ Rate is what was
@@ -10595,6 +10639,43 @@ the save path, run in memory, stores the same.
   nil-priced rule. On the Iron Mountain sheet that is eleven lines (A 8, A 20,
   D 14, D 15, E 2, E 3, G, H 1, I 1, J 1.01, J 1.02): each carries a 0 in its
   amount or its rate, so none is a blocking flag.
+
+#### "Rate in this sheet is for" (21 November 2026, §0 eighty-third block)
+
+A card under *Rates on this sheet are*: a select with **Supply**,
+**Installation**, **Supply + Installation (SITC)** and **Separate Supply and
+Installation columns**, nothing pre-selected except a layout's remembered
+choice, and a one-line hint when a heading row says *SITC* or *supply,
+installation* (`sitc_hint()`, advice only). `boqimport.RATE_FOR_BASIS` maps
+the choice onto the BOQ's `rate_basis`, which the prefilled form's select and
+banner show.
+
+| choice | the sheet rate goes to | basis |
+|---|---|---|
+| Supply | the supply track (v1) | `supply_only` |
+| Installation | the installation track — `editor_model(rate_for=)` moves rate, base, escalation and discount across, supply blank | `installation_only` |
+| SITC | the supply track; installation blank | `sitc` |
+| Separate columns | each where its column is mapped | `split` |
+
+* **Required on the page**: the card posts `rate_for_offered=1`, and a confirm
+  carrying it with no choice is refused. ⚠ **A POST without the marker** (an
+  older page, a script — the picker's own `picker=1` precedent) is the import
+  as it always was: rates where the columns are mapped, basis `split`.
+* **Refused, naming the columns**, when the choice cannot hold the mapping:
+  Supply / SITC with an Installation column ticked; Installation with both
+  tracks ticked. Nothing is moved or unticked for the operator.
+* **The cost switch is unchanged** and runs inside the chosen track: the move
+  happens before the cost branch, so a cost sheet imported as Installation puts
+  base = sheet rate and escalation = markup on the installation track.
+* **The layout remembers the choice** (`import_layouts.rate_for`). ⚠ A known
+  layout goes straight to the form **only when it remembers one** — every
+  layout confirmed before this block stops at the preview once, so the
+  question is asked. The staged row gains `rate_for` only when a choice is
+  posted (its shape is pinned by `test_boq_import.py`).
+* Everything else — the column picker, tabs, qty-0 rows left out, the
+  discount, names word for word — is untouched. The preview's totals check
+  still reads the sheet's own columns, so an Installation sheet's check is
+  labelled by the column it was mapped from.
 
 #### The legend (18 October 2026)
 

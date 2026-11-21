@@ -7544,6 +7544,56 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 21 November 2026, by Manas Gawde — BOQ RATE BASIS (SUPPLY / INSTALLATION / SITC) AND THE 24 CARAT PRINT · NO CHARGE · POST-GO-LIVE PROD HOTFIX
+>
+> **A new block, not an amendment.** The **eighty-third** occasion, written
+> directly on `samruddhi-prod` from `9932099` (12 ahead / 0 behind origin
+> as last fetched, nothing pulled). The two PO *Deliver To* hotfixes
+> (`d38687c`, `49d9518`) carried no block of their own; this one does.
+> Recorded **"authorised, no charge"** on Manas's written brief: the client's
+> BOQ rates are often ONE combined Supply + Installation rate (SITC), the
+> import put it on the supply track, and the print read wrong.
+>
+> **What was built.** A BOQ-level `rate_basis` — `split` (default; an absent
+> key reads as it, no backfill), `supply_only`, `installation_only`, `sitc`
+> (one rate, stored on the SUPPLY track, installation blank). A select on
+> `/boq/create` and `/boq/edit` (the existing edit route, gated `boq.create`,
+> every change logged with who and when); Import from Excel asks **"Rate in
+> this sheet is for"** at the column step and prefills it. The invariant
+> refuses `sitc` / `supply_only` while a line carries a non-zero installation
+> rate (unit or base) and `installation_only` while one carries a supply rate,
+> naming the items; nothing is zeroed and no amount moves. Revisions carry it.
+> The print: SITC one "Supply + Installation (SITC)" pair, single-track bases
+> one track, totals foot; `split` byte-identical (no golden moved). RA: the
+> SITC rate bills on the supply leg at its full rate; installation skips it
+> (no rate). The supply leg reads "Supply (SITC)" on links. No RA / PI / TI
+> print changed.
+>
+> **The print bug.** SF/BOQ/26-27/0010 (`bc79080a-…`, "24 Carat", imported
+> 21 Nov) printed 200 with a valid table — the sheet's one rate column is
+> headed **SITC** and went to Supply, so 83 lines printed with empty
+> Installation columns and "Installation 0.00". The live record was NOT
+> flipped; the owner sets *Rate basis* on `/boq/edit`.
+>
+> **Judgement calls, declared:**
+> 1. **A fourth import choice, "Separate Supply and Installation columns"**
+>    (`split`). With only the brief's three, every two-track sheet (Kiyan
+>    Heights, the Sify shape) would be refused by the invariant.
+> 2. **Required on the page, not on the wire**: the card posts
+>    `rate_for_offered=1`; a POST without it reads as before (`split`).
+> 3. **A known layout skips the preview only when it remembers a choice** —
+>    every layout confirmed before today stops once.
+> 4. **The invariant counts a base rate as a rate**, so a hidden column can
+>    never conceal a figure.
+> 5. **`/boq/view` hides the empty track too** (one builder for both).
+> 6. **"Amount (SITC)"** heads the SITC amount column; the rate column carries
+>    the full "Supply + Installation (SITC)".
+> 7. The sheet header's *Project: DATE: 21.02.2024* on 0010 (the name detector
+>    took a date line as the title) is **reported, not changed** — an editable
+>    suggestion, and a heuristic outside this scope.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

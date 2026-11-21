@@ -162,6 +162,39 @@ RATE_MODES = ("selling", "cost")
 COST_REFUSED_TARGETS = ("supply_base_rate", "escalation_pct",
                         "install_base_rate", "install_escalation_pct")
 
+# "Rate in this sheet is for" (21 November 2026, CLIENT_CHANGES.md §0,
+# eighty-third block). The operator's choice → the BOQ's `rate_basis`:
+#
+#   supply        the sheet rate on the SUPPLY track (v1's reading)  supply_only
+#   installation  the sheet rate on the INSTALLATION track            installation_only
+#   sitc          ONE combined rate, on the SUPPLY track; the
+#                 installation rate stays blank                        sitc
+#   split         separate Supply and Installation columns, each
+#                 where its column is mapped (every two-track sheet)   split
+#
+# The cost switch works unchanged INSIDE whichever track this picks. The page
+# posts `rate_for_offered=1` beside the select; a POST from the page must
+# choose before it confirms. A POST without the marker (an older page, a
+# script) reads exactly as before: rates where the columns are mapped, basis
+# `split` — the picker's own `picker=1` precedent.
+RATE_FOR_BASIS = {"supply": "supply_only", "installation": "installation_only",
+                  "sitc": "sitc", "split": "split"}
+RATE_FOR_LABEL = {"supply": "Supply",
+                  "installation": "Installation",
+                  "sitc": "Supply + Installation (SITC)",
+                  "split": "Separate Supply and Installation columns"}
+SUPPLY_TARGETS = ("supply_base_rate", "escalation_pct", "supply_rate",
+                  "supply_disc_pct", "supply_net_rate", "supply_amount")
+INSTALL_TARGETS = ("install_base_rate", "install_escalation_pct", "install_rate",
+                   "install_disc_pct", "install_net_rate", "install_amount")
+# What moves to the installation track when the rate is for Installation —
+# the four fields `editor_model()` reads off a build() line.
+_TO_INSTALL = (("supply_base_rate", "install_base_rate"),
+               ("escalation_pct", "install_escalation_pct"),
+               ("supply_rate", "install_rate"),
+               ("supply_disc_pct", "install_disc_pct"))
+_SITC_WORDS = re.compile(r"\bs\.?\s?i\.?\s?t\.?\s?c\b|supply\s*,?\s*install", re.I)
+
 
 def _now() -> str:
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -695,7 +728,11 @@ def stage(wb: dict, filename: str, uid: str) -> tuple:
     sel = wb["selected"]
     grid = wb["grid"][sel]
     mapping, layout = _known_mapping(grid)
-    known = mapping is not None and _auto_mode(grid)[0] == "selling"
+    # ⚠ A known layout goes straight to the form only when it REMEMBERS what
+    #   its rates are for (21 Nov 2026) — a layout confirmed before that stops
+    #   at the preview once, so the question is asked.
+    known = (mapping is not None and _auto_mode(grid)[0] == "selling"
+             and isinstance(layout, dict) and layout.get("rate_for") in RATE_FOR_BASIS)
     if mapping is None:
         # ⚠ The ADVICE, not the bare guess (6 October 2026, R1): the tick and
         #   the target arrive set to what `sheetimport.advise()` suggests, a
@@ -710,6 +747,9 @@ def stage(wb: dict, filename: str, uid: str) -> tuple:
         "layout": SI.signature(grid), "known": known, "confirmed": False,
         # "" until the operator posts a choice; `rate_mode()` reads it.
         "rate_mode": "", "markup": "",
+        # ⚠ `rate_for` (21 November 2026) is NOT written here: it appears when
+        #   the operator posts a choice, and `chosen_rate_for()` reads absent
+        #   as "not chosen yet" — the staged row's shape is pinned by a test.
         # 6 October 2026 (R4/R5). `ticked` — the tabs to build, the reader's
         # own pick by default; `tab_maps` — the mapping of every ticked tab
         # OTHER than `sheet_index`, whose mapping stays in `mapping` as it
@@ -723,9 +763,11 @@ def stage(wb: dict, filename: str, uid: str) -> tuple:
     return token, known
 
 
-def _upsert_layout(grid: dict, mapping: dict, mode: str = "selling") -> None:
+def _upsert_layout(grid: dict, mapping: dict, mode: str = "selling",
+                   rate_for: str = "split") -> None:
     """Remember a confirmed mapping — and, from 1 October 2026, whether the
-    sheet was confirmed as selling rates or our cost. Never the markup."""
+    sheet was confirmed as selling rates or our cost. Never the markup. From
+    21 November 2026, what its rates were for (`rate_for`)."""
     sig = SI.signature(grid)
     if not sig:
         return
@@ -733,10 +775,11 @@ def _upsert_layout(grid: dict, mapping: dict, mode: str = "selling") -> None:
     if isinstance(lay, dict):
         lay["mapping"] = dict(mapping)
         lay["rate_mode"] = mode
+        lay["rate_for"] = rate_for
         lay["use_count"] = int(lay.get("use_count") or 0) + 1
     else:
         _layouts()[sig] = {"id": sig, "signature": sig, "mapping": dict(mapping),
-                           "rate_mode": mode,
+                           "rate_mode": mode, "rate_for": rate_for,
                            "created_by": _uid(), "created_at": _now(), "use_count": 1}
 
 
@@ -803,6 +846,121 @@ def mode_problems(mode: str, markup_raw, mapping: dict) -> list:
                      f"the markup becomes its escalation, so no column can be "
                      f"{' or '.join(taken)}: set it to Ignore, or choose Selling rates.")
     return probs
+
+
+# =============================================================================
+# "RATE IN THIS SHEET IS FOR" (21 November 2026)
+# =============================================================================
+
+def remembered_rate_for(grid: dict) -> str:
+    """What this layout's rates were last confirmed as being for, or ""."""
+    lay = _layouts().get(SI.signature(grid) or "")
+    v = lay.get("rate_for") if isinstance(lay, dict) else ""
+    return v if v in RATE_FOR_BASIS else ""
+
+
+def chosen_rate_for(rec: dict, grid: dict) -> str:
+    """The select's value on the preview: the operator's own choice, else the
+    layout's remembered one, else "" — nothing is pre-selected from a guess."""
+    v = rec.get("rate_for")
+    return v if v in RATE_FOR_BASIS else remembered_rate_for(grid)
+
+
+def effective_rate_for(rec: dict, grid: dict) -> str:
+    """What the build uses: the choice, else the remembered one, else `split`
+    — exactly the import as it was before the question existed."""
+    return chosen_rate_for(rec, grid) or "split"
+
+
+def sitc_hint(rec: dict) -> str:
+    """The heading's own words when it says SITC / "supply, installation" —
+    advice beside the select, never a choice made for the operator."""
+    for i in _ticked(rec):
+        grid = _tab_grid(rec, i) or {}
+        hdr = grid.get("header") or []
+        upto = (max(hdr) + 1) if hdr else 0
+        for _rnum, vals in (grid.get("rows") or [])[:upto]:
+            for v in vals or []:
+                if isinstance(v, str) and _SITC_WORDS.search(v):
+                    return v.strip()[:60]
+    return ""
+
+
+def rate_for_problems(rec: dict, choice: str, asked: bool) -> list:
+    """
+    Why the import cannot confirm on `choice`, or []. `asked` — the page
+    offered the select (`rate_for_offered`): then a choice is REQUIRED. A
+    choice that cannot hold the columns mapped is refused, naming them; no
+    column is moved or dropped for the operator.
+    """
+    if choice not in RATE_FOR_BASIS:
+        return (["Choose what the rate in this sheet is for: Supply, Installation, "
+                 "Supply + Installation (SITC), or separate Supply and Installation "
+                 "columns."] if asked else [])
+    if choice == "split":
+        return []
+    cols = {"supply": [], "install": []}
+    for key, t in _all_mappings(rec).items():
+        i, c = key.split(":", 1)
+        where = (f"{_tab_name(rec, int(i))} column {SI.col_letter(int(c))}"
+                 if len(_ticked(rec)) > 1 else f"column {SI.col_letter(int(c))}")
+        if t in SUPPLY_TARGETS:
+            cols["supply"].append(f"{where} ({SI.TARGET_LABEL[t]})")
+        elif t in INSTALL_TARGETS:
+            cols["install"].append(f"{where} ({SI.TARGET_LABEL[t]})")
+    name = RATE_FOR_LABEL[choice]
+    if choice in ("supply", "sitc") and cols["install"]:
+        return [f"The rate is for {name}, but an Installation column is ticked: "
+                f"{', '.join(cols['install'])}. Map the sheet's rate to the Supply "
+                f"columns, or choose Separate Supply and Installation columns."]
+    if choice == "installation" and cols["supply"] and cols["install"]:
+        return [f"The rate is for {name}, but both Supply and Installation columns "
+                f"are ticked: {', '.join(cols['supply'] + cols['install'])}. Keep one "
+                f"track, or choose Separate Supply and Installation columns."]
+    return []
+
+
+def _take_rate_for(rec: dict, form) -> None:
+    """Keep the posted choice on every POST, as the selling / cost choice is."""
+    if form.get("rate_for") in RATE_FOR_BASIS:
+        rec["rate_for"] = form["rate_for"]
+    elif form.get("rate_for_offered") and "rate_for" in form:
+        rec["rate_for"] = ""
+
+
+def _rate_for_card(rec: dict, grid: dict) -> str:
+    """The "Rate in this sheet is for" card — a select, required at confirm."""
+    cur = chosen_rate_for(rec, grid)
+    opts = ['<option value=""' + ("" if cur else " selected")
+            + '>&#8212; choose &#8212;</option>']
+    for k in ("supply", "installation", "sitc", "split"):
+        opts.append(f'<option value="{k}"{" selected" if k == cur else ""}>'
+                    f'{P.esc(RATE_FOR_LABEL[k])}</option>')
+    hint = sitc_hint(rec)
+    hint_html = (f'<p class="imp-note">The heading says &ldquo;{P.esc(hint)}&rdquo; '
+                 f'&mdash; that usually means one combined Supply + Installation '
+                 f'(SITC) rate.</p>' if hint else "")
+    remembered = remembered_rate_for(grid)
+    mem_html = (f'<p class="imp-note">Pre-selected: this layout was last confirmed as '
+                f'&ldquo;{P.esc(RATE_FOR_LABEL[remembered])}&rdquo;. Change it either way.</p>'
+                if remembered and not rec.get("rate_for") else "")
+    return f"""
+    <div class="imp-card imp-ratefor">
+      <h2>Rate in this sheet is for</h2>
+      <input type="hidden" name="rate_for_offered" value="1"/>
+      <div class="form-group" style="max-width:28rem;">
+        <select id="rate_for" name="rate_for">{"".join(opts)}</select>
+      </div>
+      {mem_html}{hint_html}
+      <p class="imp-note"><b>Supply</b>: the rate goes to the supply track.
+      <b>Installation</b>: it goes to the installation track and supply stays blank.
+      <b>Supply + Installation (SITC)</b>: one combined rate, kept on the supply track
+      with installation blank &mdash; printed as one &ldquo;Supply + Installation
+      (SITC)&rdquo; column and billed on the supply leg. <b>Separate columns</b>: the
+      sheet has its own Supply and Installation rates, each where its column is
+      mapped. <i>Our cost</i>, above, works inside whichever track this picks.
+      Required before the BOQ opens.</p>
+    </div>"""
 
 
 # =============================================================================
@@ -899,7 +1057,7 @@ def _rowref(l: dict) -> str:
     return f"{l['tab']} · row {l['row']}" if l.get("tab") else f"Row {l['row']}"
 
 
-def editor_model(result: dict, markup: float = None) -> dict:
+def editor_model(result: dict, markup: float = None, rate_for: str = None) -> dict:
     """
     `sheetimport.build()`'s result as the editor's boot model — the shape
     `boq._form_payload_from()` produces, plus UI keys the editor draws and
@@ -952,6 +1110,14 @@ def editor_model(result: dict, markup: float = None) -> dict:
       remark as `<Field>: <text>`, after the sheet's own remark and Make (A1,
       `build()`'s `as_remark`) — on a folded spec-text row, into its parent's.
 
+    ⚠ **`rate_for` (21 November 2026, §0 83rd block).** "installation" moves
+      each line's supply rate, base, escalation and discount onto the
+      INSTALLATION track, supply blank — before the cost branch, so a cost
+      sheet's base + markup land on that track. A line that already carries
+      an installation figure is left exactly as it was. Every other value —
+      None, "supply", "sitc", "split" — is the model it always was: an SITC
+      rate is simply the supply rate.
+
     Every line goes in with a blank `line_id`, so each is minted on save.
     """
     sections = [{"code": s["code"], "title": s["title"], "areas": []}
@@ -960,6 +1126,11 @@ def editor_model(result: dict, markup: float = None) -> dict:
     lines, last = [], {}
     for l in result["lines"]:
         header = bool(l["is_header"])
+        if (rate_for == "installation" and not header
+                and all(l.get(dst) is None for _src, dst in _TO_INSTALL)):
+            l = dict(l)
+            for src, dst in _TO_INSTALL:
+                l[dst], l[src] = l.get(src), None
         if l.get("kind") == "group_label":
             tgt = last.get((l["section"], l["parent_item_no"])) if l["parent_item_no"] else None
             if tgt is not None:
@@ -1845,7 +2016,8 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
     mode, why = rate_mode(rec, grid)
     if problems is None:
         problems = (_tab_problems(rec)
-                    + mode_problems(mode, rec.get("markup"), _all_mappings(rec)))
+                    + mode_problems(mode, rec.get("markup"), _all_mappings(rec))
+                    + rate_for_problems(rec, chosen_rate_for(rec, grid), False))
 
     alert = f'<div class="alert alert-error">&#10007; {P.esc(error)}</div>' if error else ""
     if problems:
@@ -1952,6 +2124,7 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
       {known}
     </div>
     {_mode_card(mode, why, str(rec.get("markup") or ""))}
+    {_rate_for_card(rec, grid)}
     {legend_html(BOQ_LEGEND, "BOQ", _mapping_of(rec, primary))}
     {_names_html(rec)}
     {pickers}
@@ -2013,6 +2186,12 @@ def _banner(token: str, rec: dict, result: dict, model: dict,
                  f'Change mapping</a></p>')
     names = ""
     pf = prefill or {}
+    rf = [k for k, v in RATE_FOR_BASIS.items() if v == pf.get(BQ.RATE_BASIS_KEY)]
+    rate_for_html = ""
+    if rf:
+        rate_for_html = (f'<p style="margin:.4rem 0 0;">Rate in this sheet is for: '
+                  f'<b>{P.esc(RATE_FOR_LABEL[rf[0]])}</b> &mdash; the BOQ&rsquo;s '
+                  f'<i>Rate basis</i> below is set to match.</p>')
     filled = [w for k, w in (("project_name", "the project name"),
                              ("account_name", "the account name")) if pf.get(k)]
     if filled:
@@ -2036,7 +2215,7 @@ def _banner(token: str, rec: dict, result: dict, model: dict,
             f'<b>Nothing has been saved.</b> Check the lines, fill in the project and '
             f'customer, then press Create BOQ &mdash; or just leave the page.'
             f'<div style="margin:.4rem 0 0;">{totals_block(result)}</div>'
-            f'{cost}{known}{names}{flags}</div>')
+            f'{cost}{rate_for_html}{known}{names}{flags}</div>')
 
 
 # =============================================================================
@@ -2169,6 +2348,7 @@ def preview(token: str):
         rec["rate_mode"] = request.form["rate_mode"]
     if "markup" in request.form:
         rec["markup"] = str(request.form.get("markup") or "").strip()[:20]
+    _take_rate_for(rec, request.form)
 
     # "confirm@<line>.<field>" was a link in the grouped summary: confirm, and
     # land on that field. Nothing emits it from 6 October 2026 (A3 — no field
@@ -2185,18 +2365,24 @@ def preview(token: str):
         return redirect(url_for("boqimport.preview", token=token), code=303)
 
     mode, _why = rate_mode(rec, grid)
-    problems = _tab_problems(rec) + mode_problems(mode, rec.get("markup"), _all_mappings(rec))
+    asked = bool(request.form.get("rate_for_offered"))
+    choice = chosen_rate_for(rec, grid) if not asked else rec.get("rate_for") or ""
+    problems = (_tab_problems(rec) + mode_problems(mode, rec.get("markup"), _all_mappings(rec))
+                + rate_for_problems(rec, choice, asked))
     if problems:
         return _preview_page(token, rec, problems=problems)
+    # A POST without the select (an older page, a script) is the import as it
+    # always was — rates where the columns are mapped, basis `split`.
+    rec["rate_for"] = choice or "split"
     markup = parse_markup(rec.get("markup")) if mode == "cost" else None
     # Every ticked tab, merged — and measured WHOLE against the BOQ's limits
     # (R5): refused with its line count, never truncated.
-    refusal = too_large(editor_model(build_tabs(rec), markup=markup))
+    refusal = too_large(editor_model(build_tabs(rec), markup=markup, rate_for=rec["rate_for"]))
     if refusal:
         return _preview_page(token, rec, error=refusal)
     for i in _ticked(rec):
         # Each tab's picks are remembered under its own header signature.
-        _upsert_layout(_tab_grid(rec, i), _mapping_of(rec, i), mode)
+        _upsert_layout(_tab_grid(rec, i), _mapping_of(rec, i), mode, rec["rate_for"])
     rec["layout"] = SI.signature(grid)
     rec["confirmed"], rec["known"] = True, False
     dest = url_for("boqimport.form", token=token)
@@ -2217,13 +2403,15 @@ def form(token: str):
 
     grid = _grid(rec)
     mode, _why = rate_mode(rec, grid)
-    problems = _tab_problems(rec) + mode_problems(mode, rec.get("markup"), _all_mappings(rec))
+    rate_for = effective_rate_for(rec, grid)
+    problems = (_tab_problems(rec) + mode_problems(mode, rec.get("markup"), _all_mappings(rec))
+                + rate_for_problems(rec, rate_for, False))
     if problems:
         rec["known"] = False
         return _preview_page(token, rec, problems=problems)
     markup = parse_markup(rec.get("markup")) if mode == "cost" else None
     result = build_tabs(rec)
-    model = editor_model(result, markup=markup)
+    model = editor_model(result, markup=markup, rate_for=rate_for)
     refusal = too_large(model)
     if refusal:
         rec["known"], rec["confirmed"] = False, False
@@ -2232,6 +2420,8 @@ def form(token: str):
     # The names the sheet gave (R4) — suggestions, now on the ordinary form,
     # where they are edited like anything else; nothing is saved here.
     prefill = prefill_of(rec)
+    # The BOQ's rate basis, from the choice — the form's select, prefilled.
+    prefill[BQ.RATE_BASIS_KEY] = RATE_FOR_BASIS[rate_for]
     unit_mapped = any("unit" in _mapping_of(rec, i).values() for i in _ticked(rec))
     # IMPORT_STYLES rides with the banner: /boq/create does not load it, so the
     # banner's own classes were unstyled there until 30 September 2026.
