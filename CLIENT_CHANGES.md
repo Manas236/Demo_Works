@@ -7861,10 +7861,10 @@ one automatic.
 >   corrected: `42d49db` (§0 seventy-ninth block) made it editable.
 >
 > **Goldens moved — 6c only, proved.** The fallback phone prints in every
-> letterhead the test fixtures draw, so **18 golden tests** moved: 14 in
+> letterhead the test fixtures draw, so **17 golden tests** moved: 11 in
 > `test_print_golden.py` (TI, PI, PO, RA, DC, joint sheet, BOQ ×3, draft
-> PO, merged TI, and the PO-extra-lines cross-check), 2 page goldens
-> (`/` and `/settings/`) and 3 work-order prints. **Proof:** both numbers
+> PO, merged TI), the PO-extra-lines cross-check that reads those pins,
+> 2 page goldens (`/` and `/settings/`) and 3 work-order prints. **Proof:** both numbers
 > are 10 digits, so with a test-time shim that maps `8898606303` back to
 > `8898420303` inside every sha256 the suite takes, all 264 golden tests
 > pass against the OLD digests unchanged — i.e. the phone digits are the

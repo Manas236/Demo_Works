@@ -10,7 +10,27 @@
 > **This is the file most likely to go stale.** It links rather than restates
 > for exactly that reason. Update it when a step lands.
 
-**Latest, 13 November 2026 — CLIENT_CHANGES.md §0 seventy-third block (Manas,
+**Latest, 23 November 2026 — CLIENT_CHANGES.md §0 eighty-fourth to
+eighty-ninth blocks (one pass of client fixes, ALL NO CHARGE), on
+`antigravity-dev`, NOT DEPLOYED** (base `1b8137f`, which is production).
+84th: the attendance import picks the project PER WORKER at a shared site
+(`wproj_<row>_<site>`, default = that worker's project at that address last
+month). 85th: Owner-only `/attendance/assign-projects` — bulk assign of
+unassigned markings by rules (a) Oct 2026 Jamnagar hand entries → RIL
+Jamnagar (ruled 88), (b) one-project site, (c) per-worker pick; new
+`auth.OWNER_ONLY_PAGES`. 86th: HR takes out her own attendance imports
+(`payimport.delete_import` left `OWNER_ONLY`) and deletes DRAFT payslips
+(new `/payroll/slip/<id>/delete`). 87th: SITC heading on PI/TI from a BOQ;
+RA chips the rate basis makes impossible drawn disabled. 88th: PO picture
+library select on `/purchase/create` and `/purchase/edit`. 89th: Excel lines
+on `/proforma/new`, Resume after Back on `/merged/create` and
+`/attendance/mark`, fallback phone 8898606303 (17 goldens re-baselined with
+hash-shim proof), ABOUT TI-number note. Endpoints 223 → 225, no permission
+minted. **Serial suite: 6,088 passed / 31 skipped at `1b8137f` → 6,134
+passed / 31 skipped / 0 failed.** No requirements change; no role tick
+needed; one data step (the bulk assign, run by the Owner on prod).
+
+**Previously, 13 November 2026 — CLIENT_CHANGES.md §0 seventy-third block (Manas,
 after a client call with HR; NO CHARGE), on `antigravity-dev`, NOT DEPLOYED**
 (base `36a7e95`, which is production). HR could not choose WHICH payslips to
 print or issue. `/payroll/` now has a tick per row, select-all over the rows
