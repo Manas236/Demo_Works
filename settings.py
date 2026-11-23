@@ -91,7 +91,7 @@ IDENTITY_FIELDS = [
     ("COMPANY_LEGAL",     "Legal Name",         "M/s Samruddhi Fire Services",        None),
     ("COMPANY_TAGLINE",   "Tagline",            "Fire Protection and Safety Engineers", None),
     ("COMPANY_ADDR",      "Registered Address", "Shop 3, …, Mumbai - 400001",         None),
-    ("COMPANY_PHONE",     "Phone",              "8898420303",                         _v_phone),
+    ("COMPANY_PHONE",     "Phone",              "8898606303",                         _v_phone),
     ("COMPANY_EMAIL",     "E-mail",             "samruddhifire@gmail.com",            _v_email),
     ("COMPANY_WEB",       "Website",            "www.samruddhifire.in",               None),
     ("COMPANY_GSTIN",     "GSTIN",              "27AAACA1234A1Z5",                    _v_gstin),

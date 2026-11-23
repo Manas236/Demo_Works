@@ -50,8 +50,11 @@ shipped configuration; with the catalogue switched on the page stays the
 pinned `1d7725a` bytes. Its picks live in a hidden field the page writes on
 every click and keystroke, so the saved draft carries them.
 
-NOT wired, deliberately: `/merged/create` (two dropdowns — nothing typed to
-lose), and the admin forms `/users/create` and `/roles/create`.
+From 23 November 2026 (§0 eighty-ninth block, item 6b) also `/merged/create`
+— once two dropdowns, it has since gained typed boxes (the note, the series
+and the Tally numbers) — and `/attendance/mark`.
+
+NOT wired, deliberately: the admin forms `/users/create` and `/roles/create`.
 
 A LEAF: imports nothing of the app.
 """

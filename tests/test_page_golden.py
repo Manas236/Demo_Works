@@ -495,8 +495,8 @@ PAGES = {
     #       ("855698a7b62a425d", 109810,
     #        {"head": "024abb845bc90f71", "shell": "a1e6c63a6d4c6ac2",
     #         "chrome": "98789be45a2abed2", "main": "3e9d91230374421e"})
-    ("dashboard",       "/"):                          ("a1c007c761cd194f", 109860,
-        {"head": "024abb845bc90f71", "shell": "a1e6c63a6d4c6ac2", "chrome": "98789be45a2abed2", "main": "af5042bbe07aad09"}),   # §0 66th ruling 4: moved=['main'], +50 bytes
+    ("dashboard",       "/"):                          ("c4c01d81cdd09b81", 109860,   # was a1c007c761cd194f (fallback phone 8898606303, 23 Nov 2026)
+        {"head": "024abb845bc90f71", "shell": "a1e6c63a6d4c6ac2", "chrome": "98789be45a2abed2", "main": "7736b8de7b7a3d9d"}),   # was af5042bbe07aad09 (fallback phone 8898606303, 23 Nov 2026); §0 66th ruling 4: moved=['main'], +50 bytes
     ("quotations",      "/quotation/"):                ("f7af9a508c3c8d73", 70825,
         {"head": "6a1ba8490f2cdcd0", "shell": "a1e6c63a6d4c6ac2", "chrome": "428580664f0626bf", "main": "7ec3c661ae9cc372"}),   # §0 59th B1: moved=['chrome'], -8 bytes
     # ⚠ re-baselined 17 November 2026 — `main` ONLY, +77 bytes (§0
@@ -895,8 +895,8 @@ PAGES = {
     #       ("settings", "/settings/"): ("f8f0d0cb199640ad", 85018,
     #        {"head": "ce8721ccb87d2120", "shell": "a1e6c63a6d4c6ac2",
     #         "chrome": "932b769fd94b56af", "main": "96a34b1da10ef362"})
-    ("settings",        "/settings/"):                 ("510db93db42692db", 86541,
-        {"head": "ce8721ccb87d2120", "shell": "a1e6c63a6d4c6ac2", "chrome": "932b769fd94b56af", "main": "dcd932dfd8ac277d"}),   # §0 59th B3: moved=['main'], +1523 bytes
+    ("settings",        "/settings/"):                 ("975ebf17fdba3da8", 86541,   # was 510db93db42692db (fallback phone 8898606303, 23 Nov 2026)
+        {"head": "ce8721ccb87d2120", "shell": "a1e6c63a6d4c6ac2", "chrome": "932b769fd94b56af", "main": "37a82950daa70f87"}),   # was dcd932dfd8ac277d (fallback phone 8898606303, 23 Nov 2026); §0 59th B3: moved=['main'], +1523 bytes
     # ⚠ re-baselined 22 September 2026 — `head` ONLY, by the four CSS rules the
     # role picker and the empty action cell needed (`AUTH_ADMIN_STYLES`, +262
     # bytes). `main` is byte-identical and that is the measurement that matters

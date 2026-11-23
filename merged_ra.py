@@ -104,6 +104,7 @@ import docsheet as DS
 import hsnfill as HF   # the ONE HSN rule — the leaf (29 Oct 2026)
 import pipeline as P
 import series as SER   # the document-number FLOOR and the one scan per series (25 Sep 2026)
+import formdraft as FD  # Resume after Back — the leaf (§0 89th block)
 import tinum as TN     # the tax invoice number as Tally gave it — the leaf (17 Nov 2026)
 import boqexcess as BX  # billing above the BOQ quantity, with a reason — the leaf (17 Nov 2026)
 import ra as RA
@@ -773,8 +774,11 @@ def create_merged():
     boq_id = (request.form.get("boq_id") if request.method == "POST"
               else request.args.get("boq")) or ""
     error = ""
+    # Resume after Back (23 Nov 2026, §0 eighty-ninth block, item 6b): a POST
+    # carrying `_resume` only REDRAWS the form — never validates or saves.
+    resuming = request.method == "POST" and FD.is_resume(request.form)
 
-    if request.method == "POST":
+    if request.method == "POST" and not resuming:
         bills = STORE.get("ra_bills") or {}
         s = bills.get((request.form.get("supply_ra_id") or "").strip())
         i = bills.get((request.form.get("installation_ra_id") or "").strip())
@@ -856,6 +860,7 @@ def create_merged():
           {picker}
         </div>
       </form>
+      {FD.script('form[action$="/merged/create"]', "merged document", resumed=resuming)}
       <div class="form-hint"><span class="fh-icon">&#8505;</span>
         <span>The two bills go on standing on their own &mdash; each keeps its
         own RA number, its own status and its own receipts. This document stacks

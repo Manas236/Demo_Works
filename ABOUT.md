@@ -6152,6 +6152,13 @@ golden moved by the script alone (81 added lines).
 
 ---
 
+⚠ **Extended 23 November 2026 (§0 eighty-ninth block, item 6b) to
+`/merged/create` and `/attendance/mark`** — the two create forms without it.
+`/merged/create` was left out on purpose when it was two dropdowns; it has
+since gained the note and both number boxes. On `/attendance/mark` a Resume
+redraws through `_validate()` (which writes nothing) with its refusal not
+shown. `tests/test_formdraft_everywhere.py` now holds 21 forms.
+
 ### The edit-after-issue log  (`edit_log`, 31 October 2026 — CLIENT_CHANGES.md §0 sixty-fourth block)
 
 **Not a collection.** A list on a document record, written by `editlog.record()`
@@ -7489,6 +7496,17 @@ a quotation-path PI's copied lines gain only the quotation's one rate as
 Nothing is saved until the form's own Save; text in a numeric cell is left
 blank, never 0.
 
+#### On "New PI (no BOQ)" too — 23 November 2026 (§0 eighty-ninth block, item 6a)
+
+`/proforma/new` carries **Add lines from Excel** (`/import/proforma?new=1`,
+drawn where `can_reach("docimport.upload_proforma")`). The proforma kind's
+`context()` takes `new=1`; `apply()` renders `proforma.create_standalone(
+imported=…)` — a SEVENTH create route with the `imported=` seam — which on
+a GET puts the sheet's rows into the form's own line editor, marked
+`source: "excel"` (`edit_proforma()`'s arrangement, not the extras box: a
+standalone PI has no copied lines to keep apart). Nothing is saved until the
+form's Save. `tests/test_proforma_new_import.py`.
+
 #### Editing an issued proforma — 31 October 2026 (§0 sixty-fourth block, Part 1)
 
 `GET,POST /proforma/edit/<id>` (`proforma.edit_proforma`, under the EXISTING
@@ -7780,6 +7798,15 @@ for the same reason `.pi-chip` lives in `QUOTATION_STYLES`.
 #### Edit after issue — 31 October 2026 (§0 sixty-fourth block, Part 2)
 
 Manas's ruling: an issued tax invoice is **editable, number locked**.
+
+⚠ **Corrected 23 November 2026 (§0 eighty-ninth block, item 6d): the NUMBER
+is editable too, since `42d49db`** (17 November 2026, §0 seventy-ninth block,
+`tinum.py`). `/invoice/edit/<id>` carries the number box; any non-blank value
+is accepted unless another LIVE tax invoice (`invoices.ref`,
+`ra_bills.tax_invoice_ref`, `merged_ras.tax_invoice_ref`) already carries it,
+and every change is appended to `ti_number_history`. Only a CANCELLED invoice
+keeps its number locked. The "number locked" and "every field but the number"
+wording below is the 31 October rule, kept as history.
 
 ⚠ **Its own permission from 2 November 2026** (§0 block of that date, Part 3,
 Manas's ruling): **`invoice.edit_issued` — "Edit issued invoice"** gates all
@@ -14602,7 +14629,7 @@ overrides them at runtime (§5). Always read them as `B.COMPANY_ADDR` —
 saved setting. `SETTINGS_KEYS`, `DEFAULTS`, `apply_settings()` and
 `current_settings()` in §1c are that mechanism.
 
-`COMPANY_PHONE` (`8898420303`) and `COMPANY_EMAIL`
+`COMPANY_PHONE` (`8898606303` — was `8898420303` until 23 November 2026, §0 eighty-ninth block, item 6c) and `COMPANY_EMAIL`
 (`samruddhifire@gmail.com`) are filled in — they feed the dashboard footer strip
 and the quotation letterhead contact block
 ([quotation.py:2447-2448](quotation.py#L2447-L2448)).

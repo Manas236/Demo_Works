@@ -45,6 +45,10 @@ FORMS = [
     ("address",           None, "/address/add", {}),
     ("specification",     None, "/spec/add", {}),
     ("project",           None, "/projects/create", {}),
+    # §0 eighty-ninth block, item 6b (23 Nov 2026): the two create forms that
+    # had no Resume after Back.
+    ("merged RA",         None, "/merged/create", {}),
+    ("attendance mark",   None, "/attendance/mark", {}),
 ]
 
 
@@ -117,8 +121,11 @@ def _snapshot():
     return sizes, json.dumps(STORE.get("settings") or {}, sort_keys=True, default=str)
 
 
-def test_there_are_nineteen():
-    assert len(FORMS) == 19
+def test_there_are_twenty_one():
+    # Was `test_there_are_nineteen`: `assert len(FORMS) == 19` — until the
+    # §0 eighty-ninth block (23 Nov 2026) added /merged/create and
+    # /attendance/mark.
+    assert len(FORMS) == 21
 
 
 @pytest.mark.parametrize("label,key,tmpl,extra", FORMS, ids=[f[0] for f in FORMS])

@@ -144,7 +144,9 @@ Fast facts so you don't get it wrong before reading:
 - **Six create routes take an `imported=` keyword** (18 Oct 2026) —
   `purchase.create_purchase`, `quotation.create_quotation`,
   `measurement.create_ms`, `challan.create_dc`, `po_draft.create_po`,
-  `ra.create_ra` — the one seam `docimport.py` (Import from Excel) renders that
+  `ra.create_ra` — and the proforma's `create_proforma`, `from_boq`,
+  `edit_proforma` and, from 23 Nov 2026 (§0 eighty-ninth block),
+  `create_standalone` (`/proforma/new`) — the one seam `docimport.py` (Import from Excel) renders that
   form through on a GET. Flask never passes it and the POST never reads it;
   keep it that way when editing those routes. Nothing imported is saved until
   the document's own Save, and a BOQ line is reached by `line_id` only after

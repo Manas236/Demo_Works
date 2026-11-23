@@ -1520,6 +1520,10 @@ class ProformaKind(Kind):
     max_rows = 300
 
     def context(self, args):
+        # `?new=1` (23 Nov 2026, §0 eighty-ninth block, item 6a): the lines of
+        # a NEW proforma with no BOQ and no quotation — `/proforma/new`.
+        if str(args.get("new") or "").strip() == "1":
+            return {"new": "1"}, "", None
         for arg, coll, label in (("pi", "proformas", "proforma invoice"),
                                  ("qid", "quotations", "quotation"),
                                  ("boq", "boqs", "bill of quantities")):
@@ -1534,6 +1538,8 @@ class ProformaKind(Kind):
         return {}, "", None
 
     def back_url(self, ctx):
+        if ctx.get("new"):
+            return url_for("proforma.create_standalone")
         if ctx.get("pi"):
             return url_for("proforma.edit_proforma", id=ctx["pi"])
         if ctx.get("qid"):
@@ -1565,6 +1571,11 @@ class ProformaKind(Kind):
         ]}
 
     def intro_html(self, ctx):
+        if ctx.get("new"):
+            return ("<p class=\"imp-note\">Each row becomes one line of the <b>new "
+                    "proforma invoice</b> (no BOQ, no quotation). A blank rate or "
+                    "GST % stays blank for you to fill; nothing is saved until the "
+                    "form's own Save.</p>")
         return ("<p class=\"imp-note\">Each row becomes one <b>extra line</b> on the "
                 "proforma invoice, after the lines copied from its quotation or "
                 "schedule &mdash; which are not changed. A blank rate or GST % stays "
@@ -1611,6 +1622,8 @@ class ProformaKind(Kind):
         ctx = rec.get("ctx") or {}
         rows = [{k: v for k, v in it.items() if k != "row"} for it in built["items"]]
         imported = {"rows": rows, "banner_html": _banner(self, rec, built)}
+        if ctx.get("new"):
+            return PF.create_standalone(imported=imported)
         if ctx.get("pi"):
             return PF.edit_proforma(ctx["pi"], imported=imported)
         if ctx.get("qid"):

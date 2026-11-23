@@ -2117,12 +2117,18 @@ def _party_with_book(f) -> tuple:
 
 
 @proforma_bp.route("/new", methods=["GET", "POST"])
-def create_standalone():
+def create_standalone(imported: dict = None):
     """
     `/proforma/new` — a proforma with no BOQ and no quotation behind it.
     The customer is typed or taken from the address book; the lines are typed
     or added from the specification library; every figure is the existing PI
     arithmetic. `quotation_id` and `boq_id` are present and empty.
+
+    `imported` (23 November 2026, §0 eighty-ninth block, item 6a) is Import
+    from Excel's seam — `edit_proforma()`'s, exactly: on a GET the sheet's
+    rows are appended to the line editor, marked `source: "excel"`. Flask
+    never passes it and the POST never reads it; nothing is saved until this
+    form's own Save.
     """
     f = request.form
     is_post = request.method == "POST"
@@ -2196,10 +2202,15 @@ def create_standalone():
                     party_book_id=(f.get("party_book_id") or "").strip())
         round_shown = _RO().form_choice(f, legacy=True)
     else:
-        rows = []
+        rows = LE.imported_rows(imported.get("rows")) if imported else []
         vals = {"date": _today(), "advance_pct": f"{DEFAULT_ADVANCE_PCT:g}",
                 "tax_type": "cgst_sgst", "ship_same": "1"}
         round_shown = True
+    import auth as _AUTH
+    import_btn = (f'<a class="btn btn-ghost" href="'
+                  f'{url_for("docimport.upload_proforma", new=1)}">&#128229; Add lines '
+                  f'from Excel</a>'
+                  if _AUTH.can_reach("docimport.upload_proforma") else "")
 
     from address import picker_options
     book_opts = picker_options("— fill blanks from the address book —",
@@ -2229,7 +2240,7 @@ def create_standalone():
         <h1>New <span>Proforma Invoice</span></h1>
         <a href="{url_for("proforma.list_proformas")}" class="btn btn-ghost">&#8592; All proformas</a>
       </div>
-      {_alert(error, "error")}
+      {_alert(error, "error")}{(imported or {}).get("banner_html") or ""}
       <div class="form-hint" style="margin:0 0 1rem;"><span class="fh-icon">&#9432;</span>
         <span><b>No BOQ and no quotation.</b> Type the customer or fill it from the
         address book, and type the lines or add them from the specification
@@ -2276,6 +2287,7 @@ def create_standalone():
             <select id="tax_type" name="tax_type">{tax_opts}</select></div>
           {LE.editor_html(rows, form_selector='form[action$="' + form_action + '"]',
                           sources=_spec_sources())}
+          {f'<div class="le-bar" style="margin:.4rem 0 1rem;">{import_btn}</div>' if import_btn else ""}
           {_RO().checkbox_html(round_shown)}
         </div>
         <div class="form-actions">

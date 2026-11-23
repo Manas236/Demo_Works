@@ -322,6 +322,7 @@ from flask import (Blueprint, has_request_context, redirect,
 
 import branding as B
 import employee as EMP
+import formdraft as FD  # Resume after Back — the leaf (§0 89th block)
 import pipeline as P
 import settings as S
 from store import STORE
@@ -3150,8 +3151,14 @@ def mark_attendance():
     date = (request.args.get("date") or "").strip() or _today()
     data = {"date": date, "status": PRESENT}
     error = ""
+    # Resume after Back (23 Nov 2026, §0 eighty-ninth block, item 6b): a POST
+    # carrying `_resume` only REDRAWS the form from what was typed — through
+    # `_validate()`, which writes nothing, with its refusal not shown.
+    resuming = request.method == "POST" and FD.is_resume(request.form)
+    if resuming:
+        data, _ignored = _validate(request.form)
 
-    if request.method == "POST":
+    if request.method == "POST" and not resuming:
         data, error = _validate(request.form)
         if not error:
             person = data["person"]
@@ -3206,7 +3213,9 @@ def mark_attendance():
         data, error,
         action=url_for("attendance.mark_attendance"),
         submit_label="Mark attendance",
-        back=url_for("attendance.list_attendance", date=data.get("date") or date)))
+        back=url_for("attendance.list_attendance", date=data.get("date") or date))
+        + FD.script('form[action$="/attendance/mark"]', "attendance marking",
+                    resumed=resuming))
 
 
 @attendance_bp.route("/edit/<id>", methods=["GET", "POST"])

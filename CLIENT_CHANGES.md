@@ -7840,6 +7840,52 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 23 November 2026, client-fix brief — SMALL GAPS: EXCEL LINES ON NEW PI, RESUME AFTER BACK, THE FALLBACK PHONE, THE TI-NUMBER NOTE · NO CHARGE
+>
+> **A new block, not an amendment.** The **eighty-ninth** occasion, on
+> `antigravity-dev`. Item 6 of the 23 November brief. Recorded
+> **"authorised, no charge"**.
+>
+> **What was built.**
+> - **6a.** The existing Excel line import (`/import/proforma`) is wired
+>   into "New PI (no BOQ)" (`/proforma/new`): an *Add lines from Excel*
+>   button, `?new=1` context, the rows landing in the form's own line editor.
+>   Nothing is saved until the form's Save. No new route.
+> - **6b.** Resume after Back on `/merged/create` and `/attendance/mark`,
+>   the only create forms without it (`formdraft.py`).
+> - **6c.** The fallback office phone `8898420303` → `8898606303` in
+>   `branding.py` and `settings.py` (and the one test that posted it).
+>   Prod's `/settings` already shows `8898606303`, so prod output does not
+>   change; this is the default a box with no saved setting prints.
+> - **6d.** ABOUT.md's note that the tax invoice number is not editable is
+>   corrected: `42d49db` (§0 seventy-ninth block) made it editable.
+>
+> **Goldens moved — 6c only, proved.** The fallback phone prints in every
+> letterhead the test fixtures draw, so **18 golden tests** moved: 14 in
+> `test_print_golden.py` (TI, PI, PO, RA, DC, joint sheet, BOQ ×3, draft
+> PO, merged TI, and the PO-extra-lines cross-check), 2 page goldens
+> (`/` and `/settings/`) and 3 work-order prints. **Proof:** both numbers
+> are 10 digits, so with a test-time shim that maps `8898606303` back to
+> `8898420303` inside every sha256 the suite takes, all 264 golden tests
+> pass against the OLD digests unchanged — i.e. the phone digits are the
+> only bytes that moved, and no length changed. Every re-baselined pin
+> keeps its trail: `was <old> (fallback phone 8898606303, 23 Nov 2026)`.
+>
+> **Judgement calls, declared:**
+> 1. **6a puts the rows in the main editor, not an "extra lines" box** — a
+>    standalone PI has no copied lines to keep apart from them.
+> 2. **6b on `/attendance/mark`** redraws a Resume through `_validate()`
+>    (writes nothing) and does not show its refusal.
+> 3. **6c re-baselined goldens** as the only declared change; historical
+>    measurement tables in ABOUT.md that quote the old number are left as
+>    the history they are.
+>
+> **Tests.** `tests/test_proforma_new_import.py` (3);
+> `test_formdraft_everywhere.py` gains two forms (19 → 21, the count pin
+> amended with the old value quoted).
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

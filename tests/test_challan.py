@@ -546,7 +546,7 @@ def test_the_seller_block_follows_settings(client, boq_tip):
     try:
         B.apply_settings({"COMPANY_GSTIN": "27AAAAA0000A1Z5",
                           "COMPANY_ADDR": "Sector-10, Koparkhairane, Navi Mumbai - 400709",
-                          "COMPANY_PHONE": "8898420303"})
+                          "COMPANY_PHONE": "8898606303"})
         assert _create(client, boq_tip, _payload(("cccccccccccc", 1))).status_code == 302
         doc = _doc(client.get(f"/dc/print/{_only_dc()['id']}").get_data(as_text=True))
         assert "27AAAAA0000A1Z5" in doc
