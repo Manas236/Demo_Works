@@ -26,9 +26,13 @@ COLLS = ("employees", "attendance", "pay_entries", "payslips", "pay_imports")
 def _clean():
     for c in COLLS:
         STORE.setdefault(c, {}).clear()
+    users_before = set(STORE.setdefault("users", {}))
     yield
     for c in COLLS:
         STORE.setdefault(c, {}).clear()
+    # The logins a test made are taken back out (STORE["users"] outlives it).
+    for uid in set(STORE["users"]) - users_before:
+        STORE["users"].pop(uid, None)
 
 
 def _user(slug, name=None):

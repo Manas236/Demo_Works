@@ -29,10 +29,15 @@ def _clean():
     for c in COLLS:
         STORE.setdefault(c, {}).clear()
     STORE.setdefault("settings", {}).pop(AT.RUNS_RECORD, None)
+    users_before = set(STORE.setdefault("users", {}))
     yield
     for c in COLLS:
         STORE.setdefault(c, {}).clear()
     STORE.setdefault("settings", {}).pop(AT.RUNS_RECORD, None)
+    # The logins a test made are taken back out: STORE["users"] outlives a
+    # test, and a stray active Director changes what /users offers elsewhere.
+    for uid in set(STORE["users"]) - users_before:
+        STORE["users"].pop(uid, None)
 
 
 def _project(pid, name, aid):
