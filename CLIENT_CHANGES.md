@@ -7644,6 +7644,58 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 23 November 2026, client-fix brief — OWNER-ONLY SCREEN TO ASSIGN EXISTING UNASSIGNED ATTENDANCE TO PROJECTS · NO CHARGE
+>
+> **A new block, not an amendment.** The **eighty-fifth** occasion, on
+> `antigravity-dev`. Item 2 of the 23 November brief. Recorded
+> **"authorised, no charge"**.
+>
+> **What prompted it.** 81% of production's attendance markings (1,359 of
+> 1,668) have no project, so project P&Ls understate labour.
+>
+> **What was built.** `GET,POST /attendance/assign-projects`
+> (`attendance.assign_projects`). GET is a dry-run preview grouped by month
+> and site: proposed project, markings, estimated labour Rs, reason. Rules in
+> order: **(a)** the October 2026 hand-entered Jamnagar days go to RIL
+> Jamnagar (ruled 6 Nov — 88 days); **(b)** a marking whose site carries
+> exactly one project goes to it; **(c)** shared-site markings with no rule
+> are listed for a per-worker pick on the same page, never guessed. POST
+> applies only what was shown plus the picks made, logs who and when (on each
+> marking through `editlog`, and per run in
+> `STORE["settings"]["labour_assign_runs"]`), and is idempotent. Assigned
+> markings are never changed; payslips are never altered. One endpoint added
+> (223 → 224), no permission minted.
+>
+> **Judgement calls, declared:**
+> 1. **Owner-only through a NEW set, `auth.OWNER_ONLY_PAGES`**, checked in
+>    `_gate()` and `can_reach()`, on top of the existing `labour.assign`
+>    (Owner + Director). Not `OWNER_ONLY`: that is the pinned destroy tier
+>    and its refusal says "Deleting a document".
+> 2. **How rule (a) finds "the 88"**: October 2026, no `import_batch` (hand
+>    entered), unassigned, at the address-book site the ONE live project
+>    named exactly "RIL Jamnagar" is filed at. The rule is not applied by
+>    name-matching a site. **If the count is not 88 the rule is shown
+>    UNTICKED** with a warning — the ruling named a number, and a different
+>    one is a question for the Owner, not a licence.
+> 3. **"Unassigned" = blank project and not overhead** (`assign_month()`'s
+>    rule). A marking naming a since-deleted project is not blank and is not
+>    touched here.
+> 4. **"Only what was shown"** is enforced by signatures of marking ids and
+>    targets per rule and per picked group: a POST whose recomputed proposal
+>    differs writes nothing at all.
+> 5. **Markings with no address-book site, or at a site with no project, are
+>    counted and left** for `/attendance/unassigned` (where any live project
+>    may be chosen and logged) — not proposed here.
+> 6. **It lives in `attendance.py`**, not a module of its own, because the
+>    labour-figure allowlist test forbids another importer.
+> 7. **The estimate column is `labour_split_of()`'s total** (estimate +
+>    actual), the P&L's own figure.
+>
+> **Tests.** `tests/test_assign_projects.py` (10). No golden moved; the
+> Owner's `/attendance/unassigned` gains a button (not a pinned page).
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

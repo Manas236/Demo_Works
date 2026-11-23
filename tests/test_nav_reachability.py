@@ -315,6 +315,12 @@ UNLINKED_ON_PURPOSE = {
     # requirement. The /roles-from-/users precedent four entries above.
     "attendance.unassigned_labour":
         "reached from /attendance/, its parent — a worklist, not a register",
+    # ⚠ §0 eighty-fifth block, 23 November 2026: the Owner-only bulk assign
+    #   is reached from /attendance/unassigned, its parent, where the button
+    #   is drawn for an Owner only (`auth.can_reach`) —
+    #   `tests/test_assign_projects.py` asserts it directly.
+    "attendance.assign_projects":
+        "reached from /attendance/unassigned, its parent — Owner only",
     # ── C3, 2 September 2026 ────────────────────────────────────────────────
     #
     # ⚠ **Kept OFF the nav and the launcher DELIBERATELY, and CC-2 is the

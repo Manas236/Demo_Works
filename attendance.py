@@ -3079,6 +3079,12 @@ def unassigned_labour():
       project, or recorded as overhead.</div>
   </div>"""
 
+    # The bulk page (§0 eighty-fifth block) is Owner only, so its button is
+    # drawn for an Owner only — empty for everyone else, byte-for-byte.
+    bulk = (f'<a class="btn" href="{url_for("attendance.assign_projects")}">'
+            f'Assign in bulk</a> '
+            if auth.can_reach("attendance.assign_projects") else "")
+
     oh_line = ""
     if overhead:
         oh_line = (
@@ -3094,7 +3100,7 @@ def unassigned_labour():
     body = f"""
   {_flash()}
   <div class="page-top"><h1>Unassigned labour</h1>
-    <a class="btn btn-ghost" href="{url_for('attendance.list_attendance')}">
+    {bulk}<a class="btn btn-ghost" href="{url_for('attendance.list_attendance')}">
       &#8592; Muster</a></div>
   <div class="att-note">A day of labour that names no project is on no
     project&rsquo;s profit and loss. It is never dropped &mdash; it waits here.
@@ -3332,3 +3338,360 @@ def delete_attendance(id):
     </form>
   </div>
 """)
+
+
+# =============================================================================
+# BULK ASSIGN — `/attendance/assign-projects` (23 November 2026, §0 85th block)
+# =============================================================================
+#
+# 81% of production's markings (1,359 of 1,668) carried no project, so every
+# project P&L understated its labour. `/attendance/unassigned` above clears
+# them one worker-month-site at a time; this page proposes the whole set by
+# three rules and applies only what it showed.
+#
+# **Owner only** — `auth.OWNER_ONLY_PAGES`, checked in `_gate()` and
+# `can_reach()` on top of `labour.assign`. Not `OWNER_ONLY`, which is the
+# destroy-a-document tier with its own pinned set and its own refusal words.
+#
+# THE RULES, in order — a marking is decided by the first that matches:
+# (a) **The October Jamnagar hand-entered days → RIL Jamnagar** (ruled 6 Nov
+#     2026: 88 days): October 2026, no `import_batch`, at the address RIL
+#     Jamnagar is filed at. ⚠ Unticked by default whenever the count is not
+#     the ruled 88 — the ruling named a number, and another is a question.
+# (b) **A site carrying exactly ONE project → that project.**
+# (c) **Two or more projects at the site, no rule** → a pick per worker,
+#     month and site. Never guessed; a blank pick writes nothing.
+# Everything else (no site, a legacy text site, a site with no project) is
+# counted and left for `/attendance/unassigned`.
+#
+# ⚠ Never touches an assigned marking (blank `project_id` and not overhead —
+#   `assign_month()`'s rule); never alters a payslip; applies nothing it did
+#   not show (each rule and each picked group carry a signature of their
+#   marking ids, and a POST whose recomputed signature differs writes
+#   NOTHING); re-running assigns nothing twice. Each marking written is
+#   logged through `editlog.record()`; each run is appended to
+#   `STORE["settings"]["labour_assign_runs"]`.
+#
+# It lives HERE, not in a module of its own, because a labour figure
+# reaching any other module is what `tests/test_attendance.py::
+# test_only_projectview_imports_the_attendance_module` exists to stop.
+
+import hashlib as _hashlib
+
+# ── Rule (a), as ruled on 6 November 2026 ───────────────────────────────────
+RULE_A_MONTH = "2026-10"
+RULE_A_PROJECT_NAME = "RIL Jamnagar"
+RULE_A_EXPECTED = 88
+
+RUNS_RECORD = "labour_assign_runs"
+
+
+def _bulk_norm(text) -> str:
+    return " ".join(str(text or "").split()).lower()
+
+
+def rule_a_project() -> dict:
+    """The ONE live project named exactly RIL Jamnagar (case and spacing
+    aside), or {} — none, or two of that name, answers nothing."""
+    hits = [p for p in (STORE.get("projects") or {}).values()
+            if _bulk_norm(p.get("name")) == _bulk_norm(RULE_A_PROJECT_NAME)]
+    return hits[0] if len(hits) == 1 else {}
+
+
+def bulk_eligible() -> list:
+    """Unassigned markings: blank project, not overhead. Oldest first."""
+    return sorted((r for r in records().values()
+                   if not str(r.get("project_id") or "").strip()
+                   and not is_overhead(r)),
+                  key=lambda r: (str(r.get("date") or ""),
+                                 str(r.get("employee_name") or "").lower()))
+
+
+def _bulk_sig(pairs) -> str:
+    h = _hashlib.sha256()
+    for mid, target in sorted(pairs):
+        h.update(f"{mid}\x1f{target}\x1e".encode("utf-8"))
+    return h.hexdigest()[:24]
+
+
+def bulk_group_key(eid, month, aid) -> str:
+    return _hashlib.sha1(f"{eid}|{month}|{aid}".encode("utf-8")).hexdigest()[:12]
+
+
+def bulk_proposal() -> dict:
+    """
+    The dry run. `{"a": {...}, "b": {...}, "c": [...], "left": {...}}`.
+
+    a / b: `{"rows": [markings], "targets": {marking id: project},
+             "groups": [(month, site label, project name, rows, reason)],
+             "sig": str}`
+    c: `[{"key", "employee_id", "employee_name", "month", "site_id",
+          "site_label", "rows", "projects", "sig"}]`
+    left: `{"reason": [markings]}` — not covered by any rule.
+    """
+    proj_a = rule_a_project()
+    aid_a = str(proj_a.get("site_address_id") or "").strip()
+    a_rows, b_rows, a_t, b_t = [], [], {}, {}
+    c_groups, left = {}, {}
+    for r in bulk_eligible():
+        aid = str(r.get(EMP.SITE_ADDRESS_FIELD) or "").strip()
+        month = month_of(r)
+        if (proj_a and aid_a and aid == aid_a and month == RULE_A_MONTH
+                and not str(r.get(IMPORT_BATCH_FIELD) or "").strip()):
+            a_rows.append(r)
+            a_t[r["id"]] = proj_a
+            continue
+        if not aid:
+            left.setdefault("no address-book site on the marking", []).append(r)
+            continue
+        here = projects_on_site(aid)
+        if len(here) == 1:
+            b_rows.append(r)
+            b_t[r["id"]] = here[0]
+        elif not here:
+            left.setdefault("no project filed at that site", []).append(r)
+        else:
+            eid = str(r.get("employee_id") or "")
+            key = bulk_group_key(eid, month, aid)
+            g = c_groups.setdefault(key, {
+                "key": key, "employee_id": eid,
+                "employee_name": str(r.get("employee_name") or ""),
+                "month": month, "site_id": aid,
+                "site_label": str(r.get("site") or "") or aid,
+                "rows": [], "projects": here})
+            g["rows"].append(r)
+
+    def _grouped(rows, targets, reason):
+        out = {}
+        for r in rows:
+            p = targets[r["id"]]
+            k = (month_of(r), str(r.get("site") or ""), str(p.get("name") or ""))
+            out.setdefault(k, []).append(r)
+        return [(m, s, n, rs, reason) for (m, s, n), rs in sorted(out.items())]
+
+    for g in c_groups.values():
+        g["sig"] = _bulk_sig((r["id"], "") for r in g["rows"])
+    return {
+        "a": {"rows": a_rows, "targets": a_t, "project": proj_a,
+              "groups": _grouped(a_rows, a_t,
+                                 f"rule (a): October 2026, entered by hand, "
+                                 f"at the {RULE_A_PROJECT_NAME} site — ruled "
+                                 f"6 Nov 2026"),
+              "sig": _bulk_sig((i, p["id"]) for i, p in a_t.items())},
+        "b": {"rows": b_rows, "targets": b_t,
+              "groups": _grouped(b_rows, b_t,
+                                 "rule (b): the only project at that site"),
+              "sig": _bulk_sig((i, p["id"]) for i, p in b_t.items())},
+        "c": sorted(c_groups.values(),
+                    key=lambda g: (g["month"], g["site_label"].lower(),
+                                   g["employee_name"].lower())),
+        "left": left,
+    }
+
+
+def _bulk_assign(r: dict, proj: dict, overhead: bool, actor: str) -> bool:
+    """One marking, re-checked at the moment of writing. True if written."""
+    import editlog as EL          # function body: `assign_month()`'s arrangement
+    if str(r.get("project_id") or "").strip() or is_overhead(r):
+        return False                                    # assigned meanwhile
+    aid = str(r.get(EMP.SITE_ADDRESS_FIELD) or "").strip()
+    if not overhead and str(proj.get("site_address_id") or "").strip() != aid:
+        return False                                    # never off-site
+    after = "overhead" if overhead else str(proj.get("name") or "")
+    if overhead:
+        r.update(overhead_fields(True))
+    else:
+        r.update({"project_id": str(proj.get("id")),
+                  "project_name": str(proj.get("name") or "")})
+    r["updated_at"] = _now()
+    EL.record(r, [(f"Project — {r.get('date')} (bulk assign)",
+                   "— unassigned —", after)], actor)
+    return True
+
+
+def bulk_apply(form, actor_id: str, actor_name: str) -> tuple:
+    """`(counts, error)`. Writes nothing at all when `error` is set."""
+    prop = bulk_proposal()
+    plan = []                     # (marking, project, overhead)
+    for rule in ("a", "b"):
+        if form.get(f"apply_{rule}"):
+            if str(form.get(f"sig_{rule}") or "") != prop[rule]["sig"]:
+                return {}, (f"Rule ({rule})'s proposal changed since it was "
+                            f"shown. Nothing was written — check it again.")
+            plan += [(r, prop[rule]["targets"][r["id"]], False)
+                     for r in prop[rule]["rows"]]
+    by_key = {g["key"]: g for g in prop["c"]}
+    picked = 0
+    for k, v in form.items():
+        if not k.startswith("pick_") or not str(v or "").strip():
+            continue
+        g = by_key.get(k[5:])
+        if not g or str(form.get(f"gsig_{k[5:]}") or "") != g["sig"]:
+            return {}, ("A worker's markings changed since they were shown. "
+                        "Nothing was written — check them again.")
+        want = str(v).strip()
+        if want == OVERHEAD_CHOICE:
+            plan += [(r, {}, True) for r in g["rows"]]
+        else:
+            proj = next((p for p in g["projects"] if str(p.get("id")) == want), None)
+            if not proj:
+                return {}, (f"{g['employee_name']}: that project is not at "
+                            f"{g['site_label']}. Nothing was written.")
+            plan += [(r, proj, False) for r in g["rows"]]
+        picked += 1
+    if not plan:
+        return {}, "Nothing was ticked or picked — nothing to apply."
+    done = sum(1 for r, p, oh in plan if _bulk_assign(r, p, oh, actor_id))
+    counts = {"assigned": done, "skipped": len(plan) - done,
+              "rule_a": bool(form.get("apply_a")),
+              "rule_b": bool(form.get("apply_b")), "groups_picked": picked}
+    rec = STORE.setdefault("settings", {}).setdefault(
+        RUNS_RECORD, {"id": RUNS_RECORD, "runs": []})
+    rec.setdefault("runs", []).append(dict(
+        counts, at=_now(), by_id=str(actor_id or ""),
+        by=str(actor_name or "")))
+    return counts, ""
+
+
+def bulk_runs() -> list:
+    return list(((STORE.get("settings") or {}).get(RUNS_RECORD) or {})
+                .get("runs") or [])
+
+
+# =============================================================================
+# THE PAGE
+# =============================================================================
+
+def _bulk_rs(rows) -> str:
+    cost = labour_split_of(rows)
+    return rupees(cost["total"]) if cost.get("costed") else "&mdash;"
+
+
+def _bulk_month(m) -> str:
+    return _esc(_month_label(m))
+
+
+def _bulk_owner_or_refuse():
+    import auth                   # function body: `_actor_id()`'s arrangement
+    user = auth.current_user()
+    if user and auth.is_owner(user):
+        return user, None
+    return None, (auth._refusal_page(
+        "Only an Owner can do this",
+        "Assigning existing attendance to projects in bulk is restricted to "
+        "the Owner tier. One worker-month at a time is on "
+        f'<a href="{url_for("attendance.unassigned_labour")}">Unassigned '
+        "labour</a>."), 403)
+
+
+@attendance_bp.route("/assign-projects", methods=["GET", "POST"])
+def assign_projects():
+    user, refused = _bulk_owner_or_refuse()
+    if refused:
+        body, code = refused
+        return _shell("Assign projects", body), code
+    if request.method == "POST":
+        counts, error = bulk_apply(request.form, str(user.get("id") or ""),
+                              str(user.get("display_name")
+                                  or user.get("username") or ""))
+        if error:
+            return redirect(url_for("attendance.assign_projects",
+                                    msg=error, type="error"))
+        return redirect(url_for(
+            "attendance.assign_projects", type="success",
+            msg=(f"{counts['assigned']} marking(s) assigned"
+                 + (f", {counts['skipped']} skipped (assigned meanwhile or "
+                    f"off-site)" if counts["skipped"] else "") + ".")))
+
+    prop = bulk_proposal()
+    total = len(bulk_eligible())
+
+    def _table(rule, title):
+        part = prop[rule]
+        rows = "".join(
+            f"<tr><td>{_bulk_month(m)}</td><td>{_esc(s) or '&mdash;'}</td>"
+            f"<td><b>{_esc(n)}</b></td><td class='num'>{len(rs)}</td>"
+            f"<td class='num'>{_bulk_rs(rs)}</td><td>{_esc(why)}</td></tr>"
+            for m, s, n, rs, why in part["groups"])
+        return rows, len(part["rows"])
+
+    a_rows, a_n = _table("a", "a")
+    b_rows, b_n = _table("b", "b")
+    a_ok = a_n == RULE_A_EXPECTED
+    a_warn = ""
+    if not prop["a"]["project"]:
+        a_warn = (f"<div class='att-note' style='border-left-color:#b91c1c'>"
+                  f"Rule (a) cannot apply: there is not exactly one project "
+                  f"named <b>{_esc(RULE_A_PROJECT_NAME)}</b>.</div>")
+    elif not a_ok:
+        a_warn = (f"<div class='att-note' style='border-left-color:#d97706'>"
+                  f"Rule (a) finds <b>{a_n}</b> marking(s); the ruling named "
+                  f"<b>{RULE_A_EXPECTED}</b>. It is left <b>unticked</b> — "
+                  f"check the list before applying it.</div>")
+
+    c_html = ""
+    for g in prop["c"]:
+        opts = ['<option value="">— leave unassigned —</option>'] + [
+            f'<option value="{_esc(p["id"])}">{_esc(p.get("name") or "(unnamed)")}</option>'
+            for p in g["projects"]] + [
+            f'<option value="{_esc(OVERHEAD_CHOICE)}">No project (overhead)</option>']
+        c_html += (
+            f"<tr><td>{_bulk_month(g['month'])}</td><td>{_esc(g['site_label'])}</td>"
+            f"<td>{_esc(g['employee_name'] or '(unnamed)')}</td>"
+            f"<td class='num'>{len(g['rows'])}</td><td class='num'>{_bulk_rs(g['rows'])}</td>"
+            f"<td>rule (c): {len(g['projects'])} projects at that site &mdash; "
+            f"pick per worker, never guessed</td>"
+            f"<td><select name='pick_{g['key']}'>{''.join(opts)}</select>"
+            f"<input type='hidden' name='gsig_{g['key']}' value='{_esc(g['sig'])}'/></td></tr>")
+
+    left_html = "".join(
+        f"<li>{len(rs)} marking(s), {_bulk_rs(rs)} &mdash; {_esc(why)}</li>"
+        for why, rs in sorted(prop["left"].items()))
+    run_html = "".join(
+        f"<li>{_esc(r.get('at'))} &middot; {_esc(r.get('by') or r.get('by_id'))}"
+        f" &middot; {int(r.get('assigned') or 0)} assigned</li>"
+        for r in reversed(bulk_runs()[-10:]))
+
+    head = ("<tr><th>Month</th><th>Site</th><th>Proposed project</th>"
+            "<th class='num'>Markings</th><th class='num'>Est. labour</th>"
+            "<th>Reason</th></tr>")
+    body = f"""
+  {_flash()}
+  <div class="page-top"><h1>Assign existing attendance to projects</h1>
+    <a class="btn btn-ghost" href="{url_for('attendance.unassigned_labour')}">
+      &#8592; Unassigned labour</a></div>
+  <div class="att-note"><b>Nothing has been written &mdash; this is a dry
+    run.</b> {total} marking(s) carry no project. Only the rules you tick and
+    the picks you make below are applied, and only to the markings shown;
+    if anything changed since this page was drawn, nothing is written.
+    Assigned markings are never changed; payslips are never altered. Every
+    marking written is logged with who and when.</div>
+  {a_warn}
+  <form method="POST">
+  <div class="reg-card"><div class="reg-head"><span class="reg-title">
+    <label><input type="checkbox" name="apply_a" value="1"
+      {'checked' if a_ok else ''}/> Rule (a) &mdash; {a_n} marking(s) to
+      {_esc(RULE_A_PROJECT_NAME)}</label></span></div>
+    <input type="hidden" name="sig_a" value="{_esc(prop['a']['sig'])}"/>
+    <div class="reg-scroll"><table class="reg-table">{head}
+      {a_rows or '<tr><td colspan="6">None.</td></tr>'}</table></div></div>
+  <div class="reg-card"><div class="reg-head"><span class="reg-title">
+    <label><input type="checkbox" name="apply_b" value="1"
+      {'checked' if b_n else ''}/> Rule (b) &mdash; {b_n} marking(s) at a
+      site with one project</label></span></div>
+    <input type="hidden" name="sig_b" value="{_esc(prop['b']['sig'])}"/>
+    <div class="reg-scroll"><table class="reg-table">{head}
+      {b_rows or '<tr><td colspan="6">None.</td></tr>'}</table></div></div>
+  <div class="reg-card"><div class="reg-head"><span class="reg-title">
+    Rule (c) &mdash; shared sites, a pick per worker</span></div>
+    <div class="reg-scroll"><table class="reg-table">
+      <tr><th>Month</th><th>Site</th><th>Worker</th><th class="num">Markings</th>
+        <th class="num">Est. labour</th><th>Reason</th><th>Project</th></tr>
+      {c_html or '<tr><td colspan="7">None.</td></tr>'}</table></div></div>
+  <button class="btn">Apply what is ticked and picked</button>
+  </form>
+  <div class="att-note"><b>Not covered by any rule</b> &mdash; left for
+    <a href="{url_for('attendance.unassigned_labour')}">Unassigned labour</a>:
+    <ul>{left_html or '<li>nothing</li>'}</ul></div>
+  <div class="att-note"><b>Earlier runs</b><ul>{run_html or '<li>none</li>'}</ul></div>"""
+    return _shell("Assign projects", body)

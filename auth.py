@@ -1237,6 +1237,10 @@ ROUTE_PERMISSIONS = {
     # `labour.assign` hold `attendance.view` too.
     "attendance.unassigned_labour": "labour.assign",
     "attendance.assign_labour":    "labour.assign",
+    # 23 November 2026 (§0 eighty-fifth block): the bulk assign. Carries
+    # `labour.assign`; the VIEW refuses anyone who is not an Owner. Not in
+    # OWNER_ONLY, which is the destroy-a-document tier.
+    "attendance.assign_projects":   "labour.assign",
     "attendance.mark_attendance":  "attendance.create",
     "attendance.edit_attendance":  "attendance.edit",
     "attendance.delete_attendance": "attendance.delete",
@@ -1467,6 +1471,23 @@ OWNER_ONLY: set = {
     "spec.delete_spec",
     "product.delete_product",
     "address.delete_address",
+}
+
+
+# =============================================================================
+# OWNER-ONLY PAGES — not a destroy, still the Owner's (23 November 2026)
+# =============================================================================
+# ⚠ **The same second gate as `OWNER_ONLY`, for a page that destroys
+#   nothing** — CLIENT_CHANGES.md §0 **eighty-fifth** block: the bulk assign
+#   of existing attendance to projects moves labour between projects' margins
+#   for up to a thousand markings in one POST, and the brief makes it the
+#   Owner's. Kept OUT of `OWNER_ONLY` because that set is the destroy-a-
+#   document tier — pinned by `tests/test_owner_only_delete.py`, and its
+#   refusal page says "Deleting a document…". Checked in `_gate()` and
+#   `can_reach()` in the same place, so a link to it is drawn for an Owner
+#   only. ⚠ Like `OWNER_ONLY`, `docs/ACCESS_MATRIX.md` does not model it.
+OWNER_ONLY_PAGES: set = {
+    "attendance.assign_projects",
 }
 
 
@@ -2400,6 +2421,14 @@ def _gate():
             "of who a role's checkboxes grant the underlying permission to. "
             "Ask an Owner to do this instead."), 403
 
+    if endpoint in OWNER_ONLY_PAGES and not is_owner(user):
+        _log_refusal(user, endpoint, required, "Owner tier required")
+        return _refusal_page(
+            "Only an Owner can use this page",
+            "This page is restricted to the Owner tier, regardless of who a "
+            "role's checkboxes grant the underlying permission to. Ask an "
+            "Owner to do this instead."), 403
+
     return None
 
 
@@ -2444,6 +2473,8 @@ def can_reach(endpoint: str, user=None) -> bool:
     if required not in permissions_of(user):
         return False
     if endpoint in OWNER_ONLY and not is_owner(user):
+        return False
+    if endpoint in OWNER_ONLY_PAGES and not is_owner(user):
         return False
     return True
 

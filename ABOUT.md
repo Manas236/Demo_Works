@@ -1919,6 +1919,14 @@ money; `approval.can_modify()` still gates every approvable document. What
 the wiring added is the preview and the previously-missing guards, not a
 new licence to destroy. §7 gap 40 is closed.
 
+#### `OWNER_ONLY_PAGES` — an Owner-only page that destroys nothing (23 November 2026)
+
+The same second gate as `OWNER_ONLY`, checked in the same two places, for a
+page that is the Owner's without being a destroy: `/attendance/assign-projects`
+(§0 eighty-fifth block). Kept out of `OWNER_ONLY` so that set stays the
+pinned destroy tier; its refusal says *"Only an Owner can use this page"*.
+⚠ `docs/ACCESS_MATRIX.md` does not model it either (§7 gap 80's shape).
+
 #### Panel permissions — `project.pnl`, a permission that gates part of a page (8 October 2026)
 
 CC-2 **C6** puts the project profit and loss on `/projects/view/<id>`, which
@@ -13030,6 +13038,39 @@ register: it is empty most of the time, and a sixth rail entry would move the
 The overhead total is printed **above** the list and is never on it —
 *"Overhead labour never lands on a project and never nags"*, which is ruling
 2. `pnl.untagged_cost()` still counts it (§3 property 5a).
+
+#### Bulk assign — existing attendance to projects · `/attendance/assign-projects` · 23 November 2026
+
+CLIENT_CHANGES.md §0 **eighty-fifth** block. 81% of production's markings
+(1,359 of 1,668) carried no project, so every project P&L understated
+labour. `attendance.assign_projects()` (in `attendance.py`, not a module of
+its own — a labour figure reaching another module is what
+`tests/test_attendance.py::test_only_projectview_imports_the_attendance_module`
+forbids). **Owner only**: `labour.assign` in the registry plus the new
+**`auth.OWNER_ONLY_PAGES`**, a second gate in `_gate()` and `can_reach()`
+beside `OWNER_ONLY` but outside it (that set is the destroy tier and its
+refusal page says "Deleting a document"). The *Assign in bulk* button on
+`/attendance/unassigned` is drawn only where `can_reach()` says yes.
+
+* **GET is a dry run**, `bulk_proposal()` over `bulk_eligible()` (blank
+  `project_id` and not overhead — `assign_month()`'s rule), grouped by month
+  and site with the proposed project, the count, the labour figure
+  (`labour_split_of()`, estimate + actual) and the reason. Rules, first
+  match wins: **(a)** October 2026, no `import_batch`, at the address
+  `RULE_A_PROJECT_NAME` ("RIL Jamnagar", exactly one live project of that
+  name) is filed at → that project — ruled 6 Nov, `RULE_A_EXPECTED` = 88, and
+  **unticked by default when the count differs**; **(b)** a site with exactly
+  one project → it; **(c)** a site with two or more → one select per worker,
+  month and site, blank by default. Everything else (no site, a site with no
+  project) is counted and left for `/attendance/unassigned`.
+* **POST applies only what was shown**: rules (a)/(b) only when ticked and
+  only when their signature (`sig_a`/`sig_b`, sha256 of marking id → project)
+  still matches; a pick only when its group's `gsig_<key>` matches. Any
+  mismatch writes **nothing**. Each marking is re-checked at the write (still
+  unassigned, project at its own site), logged through `editlog.record()`;
+  each run appended to `STORE["settings"]["labour_assign_runs"]` (who, when,
+  counts). Re-running assigns nothing twice. Payslips are never touched. Held
+  by `tests/test_assign_projects.py`.
 
 #### Search — a range of days, filtered · `/attendance/search` · 27 October 2026
 
