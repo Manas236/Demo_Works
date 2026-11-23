@@ -3708,19 +3708,47 @@ def view_boq(id: str):
         #   wording so nothing has to be reinvented.
         # "RA · Supply (SITC)" on an SITC schedule (21 Nov 2026, §0 83rd
         # block): the combined rate is billed on the supply leg.
+        # ⚠ **An RA action the RATE BASIS makes impossible is drawn
+        #   DISABLED with a one-line reason** (23 November 2026, §0
+        #   eighty-seventh block, item 4b). A schedule whose basis carries no
+        #   installation rate (SITC, Supply only) can only refuse an
+        #   installation claim, and one with no supply rate (Installation
+        #   only) a supply claim — and RA · Supply & Installation needs both.
+        #   The `rate_basis_problems()` invariant guarantees the missing track
+        #   is empty, so the basis alone decides. Presentation only: the
+        #   server-side refusal (no line priced on the leg) is unchanged. A
+        #   `split` schedule — every BOQ saved before 21 November — draws
+        #   exactly what it did.
+        _basis = rate_basis_of(boq)
+        _no_leg, _why_basis = "", ""
+        if _basis in ("sitc", "supply_only"):
+            _no_leg = "installation"
+            _why_basis = ("Not possible on this BOQ: its rate basis is "
+                          + P.esc(RATE_BASIS_LABELS[_basis])
+                          + " — it carries no installation rate"
+                          + (", and the combined rate is billed on "
+                             "RA · Supply (SITC)" if _basis == "sitc" else "")
+                          + ".")
+        elif _basis == "installation_only":
+            _no_leg = "supply"
+            _why_basis = ("Not possible on this BOQ: its rate basis is "
+                          "Installation only — it carries no supply rate.")
         ra_sup = _raise("ra.create_ra",
                         url_for("ra.create_ra", boq=id, leg="supply"),
-                        f"RA &middot; {supply_leg_label(boq)}")
+                        f"RA &middot; {supply_leg_label(boq)}",
+                        live=_no_leg != "supply", why=_why_basis)
         ra_ins = _raise("ra.create_ra",
                         url_for("ra.create_ra", boq=id, leg="installation"),
-                        "RA &middot; Installation")
+                        "RA &middot; Installation",
+                        live=_no_leg != "installation", why=_why_basis)
         # ⚠ **ONE call site, and the endpoint it asks `can_reach()` about is
         #   the route it links to.** `raboth.create_both` is classified
         #   `ra.create`, the same permission the two single-leg chips need, so
         #   nobody is offered a control the gate would refuse.
         ra_both = _raise("raboth.create_both",
                          url_for("raboth.create_both", boq=id),
-                         "RA &middot; Supply &amp; Installation")
+                         "RA &middot; Supply &amp; Installation",
+                         live=not _no_leg, why=_why_basis)
         groups = "".join((
             _group("Purchase",
                    _raise("po_draft.create_po",
@@ -3757,6 +3785,10 @@ def view_boq(id: str):
             advice.append("RA &middot; Installation: no approved measurement "
                           "sheet yet &mdash; the claim can still be raised and "
                           "is capped at the BOQ quantity until there is one")
+        # The basis reason is PRINTED as well as put in the chip's title —
+        # the owner works from a phone, and a phone has no hover.
+        if _no_leg and (ra_sup or ra_ins or ra_both):
+            advice.insert(0, _why_basis)
         hint_html = ""
         if advice:
             hint_html = ('<div class="rb-hint">&#9432;&nbsp;'

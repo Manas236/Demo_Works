@@ -507,6 +507,15 @@ def boq_line_items(picked: list, boq: dict, leg: str) -> tuple:
     out, priced = [], 0
     for part in parts:
         rate_f, code_f, gst_f, band = _LEG_FIELDS[part]
+        # ⚠ An SITC schedule (§0 eighty-third block) carries ONE combined rate
+        #   on the supply track, so its leg heading says so — "Supply +
+        #   Installation (SITC)", not "SUPPLY" (§0 eighty-seventh block, item
+        #   4a, ruled 23 Nov 2026). The heading is SNAPSHOTTED on the record
+        #   like every other row, so a PI/TI raised before keeps "SUPPLY".
+        #   Amounts, tax and numbering are untouched; every other basis
+        #   (split / supply_only / installation_only) is byte-identical.
+        if part == "supply" and BQ.rate_basis_of(boq) == "sitc":
+            band = BQ.SITC_TRACK_LABEL
         rows, last_head = [], None
         for row in picked:
             if row.get("is_header"):

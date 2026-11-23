@@ -7761,6 +7761,43 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 23 November 2026, client-fix brief (4a ruled 23 November 2026) — SITC FOLLOW-UPS: THE PI/TI LEG HEADING AND THE IMPOSSIBLE RA ACTIONS · NO CHARGE
+>
+> **A new block, not an amendment.** The **eighty-seventh** occasion, on
+> `antigravity-dev`. Item 4 of the 23 November brief; follows the
+> eighty-third block (rate basis). Recorded **"authorised, no charge"**.
+>
+> **4a — what was built.** A PI or Tax Invoice raised from an SITC BOQ
+> heads its leg "Supply + Installation (SITC)" instead of "SUPPLY"
+> (`proforma.boq_line_items()`, shared by the TI). Amounts, tax and
+> numbering unchanged; split / supply_only / installation_only output
+> byte-identical (proved per basis against the same schedule with no basis
+> key).
+>
+> **4b — what was built.** On *Raise from this BOQ*, an RA action the rate
+> basis makes impossible is drawn disabled with a one-line reason (in the
+> chip's title and printed under the bar) instead of opening a form that can
+> only refuse. SITC / Supply only: RA · Installation and RA · Supply &
+> Installation. Installation only: RA · Supply and RA · Supply &
+> Installation. The server-side refusal stays exactly as it was.
+>
+> **Judgement calls, declared:**
+> 1. **The heading is a SNAPSHOT**, like every PI/TI row: documents raised
+>    before this block keep "SUPPLY"; nothing is migrated.
+> 2. **The exact casing of the ruling** ("Supply + Installation (SITC)",
+>    `boq.SITC_TRACK_LABEL`) is used, not upper case like "SUPPLY".
+> 3. **The basis alone decides 4b**, not a scan of the rates: the
+>    eighty-third block's invariant (`rate_basis_problems()`) already refuses
+>    a basis that hides a non-zero rate, so the missing track is empty.
+> 4. **The other places a typed URL reaches** (the `/ra/create` leg picker,
+>    `/raboth/create` directly) are unchanged — the brief names the BOQ's
+>    action bar, and the server refusal holds everywhere.
+>
+> **Tests.** `tests/test_sitc_followups.py` (10). No golden moved — no
+> pinned document is SITC, and the `split` bar is unchanged.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

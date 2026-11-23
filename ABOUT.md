@@ -9602,6 +9602,24 @@ this BOQ* bar, the RA picker and the RA form's *Leg* box, the supply leg reads
 **Supply (SITC)** on an SITC schedule (`boq.supply_leg_label()`). Nothing in
 any RA / PI / TI print changed.
 
+##### SITC follow-ups — the PI/TI heading and the disabled RA chips (23 November 2026, §0 eighty-seventh block)
+
+* **4a.** A Proforma or Tax Invoice raised from an **SITC** schedule heads
+  its supply leg **"Supply + Installation (SITC)"** (`BQ.SITC_TRACK_LABEL`)
+  instead of "SUPPLY" — one line in `proforma.boq_line_items()`, which the
+  TI shares. The heading is snapshotted on the record like every row, so a
+  PI/TI raised before keeps "SUPPLY". Amounts, tax and numbering do not
+  move; `split`, `supply_only` and `installation_only` produce identical
+  rows (`tests/test_sitc_followups.py` compares each with the same schedule
+  stripped of its basis key).
+* **4b.** On *Raise from this BOQ*, an RA chip the **rate basis** makes
+  impossible is drawn **disabled** (the bar's existing `rb-off` `<span>`)
+  with a one-line reason in its title AND printed in the hint: SITC and
+  Supply only disable *RA · Installation* and *RA · Supply & Installation*;
+  Installation only disables *RA · Supply* and *RA · Supply &
+  Installation*. `split` draws exactly what it did. The server refusal (no
+  line priced on the leg) is unchanged.
+
 ##### ⚠ Base rate and escalation are deliberately NOT on the issued print
 
 **The client asked for this on 10 Aug 2026.** The escalated U/ Rate is what was
