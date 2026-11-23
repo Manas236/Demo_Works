@@ -7696,6 +7696,71 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 23 November 2026, client-fix brief (ruled 23 November 2026) — HR DELETES HER OWN ATTENDANCE IMPORTS AND DRAFT PAYSLIPS · NO CHARGE
+>
+> **A new block, not an amendment.** The **eighty-sixth** occasion, on
+> `antigravity-dev`. Item 3 of the 23 November brief. Recorded
+> **"authorised, no charge"**. This block is the §0 decision
+> `tests/test_owner_only_delete.py` requires before a destroy route changes
+> tier.
+>
+> **Which delete it was.** On 13 November HR got a 403 "Only an Owner can do
+> this" during an import fix. From the code: the only Owner-tier delete on
+> the import screen is **`payimport.delete_import`** — `/payroll/import/`
+> drew its *Take out* link on `has_perm("payroll.delete")`, which HR holds by
+> default, while the endpoint was in `auth.OWNER_ONLY`, so HR was shown a
+> link that the gate refused with exactly that page. (The muster's per-day
+> *Delete*, `attendance.delete_attendance`, is drawn unconditionally and
+> refuses HR the same way; it is not part of this ruling and stays
+> Owner-only.) ⚠ The in-app refusal log is in memory and does not survive
+> a restart; prod's application log carries the line
+> `access refused: user=… endpoint=… reason=Owner tier required` and is the
+> confirmation.
+>
+> **What was built.**
+> 1. `payimport.delete_import` left `OWNER_ONLY` for
+>    `PERMISSION_ONLY_DESTROYS`: `payroll.delete` **plus**
+>    `payimport.may_take_out()` — an Owner any import; anybody else only an
+>    import they uploaded. Uploads now stamp `uploaded_by_id`.
+> 2. **`GET,POST /payroll/slip/<id>/delete`** (`payroll.delete_slip`, under
+>    the EXISTING `payroll.delete`): a **DRAFT** payslip only. Issued slips
+>    are not deletable by anyone (they are withdrawn by cancelling, which is
+>    unchanged under `payroll.issue`); cancelled stays as is. One endpoint
+>    added (224 → 225), no permission minted, no role cell moved;
+>    `docs/ACCESS_MATRIX.md` regenerated.
+>
+> **Role persistence on prod — no manual tick needed, stated plainly.**
+> A role's permissions live in the stored role record (`STORE["roles"]`,
+> `ensure_builtin_roles()` never rewrites an existing one), and a login may
+> carry its own ALLOW/BLOCK lists (`perm_allow` / `perm_deny`). HR already
+> holds `payroll.delete` in code since 29 October, and the 13 November
+> refusal was the **Owner-tier** page, which `_gate()` only reaches AFTER
+> the permission check has passed — so prod's hr@ login demonstrably holds
+> `payroll.delete` now. This block changes code (`OWNER_ONLY`) and grants no
+> permission, so **nothing needs ticking in /users or /roles**. (If hr@'s
+> login ever had `payroll.delete` on its BLOCK list, the page it got would
+> have been "You do not have access to this page" instead.)
+>
+> **Judgement calls, declared:**
+> 1. **"Her own"** is enforced: a non-Owner holding `payroll.delete` (HR,
+>    Director) may take out only an import they uploaded. An import staged
+>    before this block carries only the uploader's NAME and is matched on the
+>    user's display name or username exactly.
+> 2. **"Issued payslips stay Owner-only"** is read as *no delete for an
+>    issued slip at all* — none existed before and none is added; the delete
+>    route refuses every non-draft for everybody, an Owner included.
+> 3. **Pay ledger entries (`payroll.delete_entry`) and single markings
+>    (`attendance.delete_attendance`) stay Owner-only** — not named in the
+>    ruling.
+> 4. **The Take-out link is now drawn through `can_reach()` and the own-import
+>    rule**, so HR is no longer shown a link that refuses.
+>
+> **Tests.** `tests/test_hr_deletes.py` (10). `test_owner_only_delete.py`'s
+> two pinned sets and `test_payroll.py`'s Owner assertion amended with the
+> old assertions quoted. No golden moved.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

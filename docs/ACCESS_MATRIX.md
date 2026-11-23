@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 93 permissions · 224 classified endpoints.**
+**7 roles · 93 permissions · 225 classified endpoints.**
 
 ---
 
@@ -432,7 +432,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `payroll.edit` | `payroll.add_entry`, `payroll.create_selected`, `payroll.edit_entry`, `payroll.generate`, `payroll.refresh_slip`, `payroll.save_extras` |
 | `payroll.issue` | `payroll.cancel_slip`, `payroll.issue_selected`, `payroll.issue_slip` |
 | `payroll.import` | `payimport.commit_import`, `payimport.preview`, `payimport.upload` |
-| `payroll.delete` | `payimport.delete_import`, `payroll.delete_entry` |
+| `payroll.delete` | `payimport.delete_import`, `payroll.delete_entry`, `payroll.delete_slip` |
 | `labour.assign` | `attendance.assign_labour`, `attendance.assign_projects`, `attendance.unassigned_labour` |
 | `project.view` | `project.list_projects`, `projectview.view_project` |
 | `project.create` | `project.create_project` |

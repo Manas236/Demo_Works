@@ -1271,6 +1271,7 @@ ROUTE_PERMISSIONS = {
     "payroll.add_entry":           "payroll.edit",
     "payroll.edit_entry":          "payroll.edit",
     "payroll.delete_entry":        "payroll.delete",
+    "payroll.delete_slip":         "payroll.delete",   # DRAFT only, §0 86th
     "payimport.upload":            "payroll.import",
     "payimport.preview":           "payroll.import",
     "payimport.commit_import":     "payroll.import",
@@ -1463,10 +1464,11 @@ OWNER_ONLY: set = {
     "employee.delete_employee",
     "attendance.delete_attendance",
     # 29 October 2026 (§0 fifty-fifth block): a pay entry and an imported
-    # month sit behind the HR wall with the marking and the charge. ⚠ Only the
-    # Owner can take a wrong import out — reversible in one line.
+    # month sit behind the HR wall with the marking and the charge.
+    # ⚠ `payimport.delete_import` LEFT this set on 23 November 2026 (§0
+    #   eighty-sixth block): HR got this page's 403 taking her own wrong
+    #   import out. See `PERMISSION_ONLY_DESTROYS`.
     "payroll.delete_entry",
-    "payimport.delete_import",
     "project.delete_project",
     "spec.delete_spec",
     "product.delete_product",
@@ -1542,6 +1544,19 @@ PERMISSION_ONLY_DESTROYS: set = {
     #   `address.merge_into()` refuses an address with nothing linked, so this
     #   is not a second door to the plain delete.
     "address.merge_address",
+    # 23 November 2026 (§0 eighty-sixth block, ruled 23 Nov): HR may delete
+    # her own attendance imports and DRAFT payslips. On 13 November HR got
+    # "Only an Owner can do this" taking a wrong import out — the
+    # /payroll/import/ "Take out" link is drawn on `payroll.delete`, which HR
+    # holds, while this endpoint was in OWNER_ONLY.
+    # ⚠ Gated by `payroll.delete` (Owner, Director, HR by default) PLUS a
+    #   rule in the view: a non-Owner may take out only an import THEY
+    #   uploaded (`payimport.may_take_out()`).
+    "payimport.delete_import",
+    # ⚠ A DRAFT payslip only — the route refuses an issued or cancelled slip
+    #   for everybody, an Owner included; an issued slip is withdrawn by
+    #   cancelling it, which is unchanged (`payroll.cancel_slip`).
+    "payroll.delete_slip",
 }
 
 

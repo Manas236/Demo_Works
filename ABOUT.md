@@ -1842,6 +1842,19 @@ cannot be loosened that way; it is the same kind of harder-than-the-registry
 rule as `_may_administer()` guarding `/users/deactivate` beyond what
 `admin.users` alone would allow (§2g, above).
 
+⚠ **23 November 2026 (§0 eighty-sixth block): `payimport.delete_import` LEFT
+`OWNER_ONLY`** and `payroll.delete_slip` (new, DRAFT payslips only) joined it
+in `PERMISSION_ONLY_DESTROYS`. On 13 November HR got this section's "Only an
+Owner can do this" page taking a wrong import out: the */payroll/import/*
+"Take out" link was drawn on `has_perm("payroll.delete")` — which HR holds —
+while the gate refused. Now the import route is `payroll.delete` **plus**
+`payimport.may_take_out()` (an Owner any import; anyone else only an import
+they uploaded — `uploaded_by_id`, else the exact uploader name on an older
+import), and the link is drawn through `can_reach()` and that rule. A draft
+slip's delete refuses an issued or cancelled slip for everybody; an issued
+slip is still withdrawn by cancelling it. `OWNER_ONLY` is therefore
+**fourteen** names minus one; the lists below are the 22 September text.
+
 `OWNER_ONLY` names **thirteen** endpoints, pinned rather than derived — twelve
 that destroy a document (`STORE[...].pop`/`del`) and the one that withdraws
 the document nothing may destroy:
@@ -13502,6 +13515,20 @@ on several tabs, and their day cells on each tab are their days at that site.
   transaction and never boots `app`; `tests/test_dryrun_tab_site_projects.py`
   fails on any write statement or call in it. ⚠ An import staged before this
   block stored its first tab only.
+
+#### HR's deletes (23 November 2026, CLIENT_CHANGES.md §0 **eighty-sixth** block — NO CHARGE)
+
+* **`GET,POST /payroll/slip/<id>/delete`** (`payroll.delete_slip`,
+  `payroll.delete`): GET confirms, POST deletes — **a DRAFT only**
+  (`payroll.delete_draft()`), refused for an issued or cancelled slip for
+  everybody, an Owner included. A draft has written nothing elsewhere (the
+  carry entry is made at issue), so the month is simply free again. The
+  *Delete draft* button is on a draft's view where `can_reach()` says yes.
+* **Taking an import out** is no longer Owner-only: `payroll.delete` plus
+  `payimport.may_take_out()` — an Owner any import, anybody else only one
+  they uploaded (`uploaded_by_id`, stamped from this block; an older import
+  is matched on the exact uploader name). The refusal for someone else's
+  import is a flash on `/payroll/import/`, not a 403.
 
 #### Choosing which slips (13 November 2026, CLIENT_CHANGES.md §0 **seventy-third** block — NO CHARGE)
 

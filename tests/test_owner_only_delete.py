@@ -80,7 +80,9 @@ def test_owner_only_covers_exactly_the_true_destroy_routes():
         # the charge, so they take the marking's tier. Added to the pin, not
         # derived — the pin is the point.
         "payroll.delete_entry",
-        "payimport.delete_import",
+        # ⚠ `payimport.delete_import` LEFT on 23 November 2026 (§0
+        #   eighty-sixth block) — it is in the carve-out below. Was here:
+        #       "payimport.delete_import",
         "project.delete_project",
         "spec.delete_spec",
         "product.delete_product",
@@ -113,7 +115,16 @@ def test_the_carve_out_is_exactly_the_five_the_forty_seventh_block_named():
         # address, Owner + Directors on `address.delete`. The plain
         # `address.delete_address` is still Owner-only (asserted below).
         "address.merge_address",
+        # The SEVENTH and EIGHTH, decided in CLIENT_CHANGES.md §0
+        # eighty-sixth block (23 November 2026): HR may take out her own
+        # attendance import (`payimport.may_take_out()` on top of
+        # `payroll.delete`) and delete a DRAFT payslip (the route refuses any
+        # other status for everybody).
+        "payimport.delete_import",
+        "payroll.delete_slip",
     }
+    # Until 23 November 2026 this was exactly the six above, ending at
+    # "address.merge_address".
     # Until 6 November 2026 this was exactly the five above:
     #   assert auth.PERMISSION_ONLY_DESTROYS == {"boq.delete_boq",
     #       "quotation.delete_quotation", "proforma.delete_proforma",

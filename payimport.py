@@ -1061,6 +1061,31 @@ def remove(rec: dict) -> tuple:
 # THE PAGES
 # =============================================================================
 
+def may_take_out(rec: dict, user=None) -> bool:
+    """
+    May this user take this import out? (23 November 2026, CLIENT_CHANGES.md
+    §0 **eighty-sixth** block — *"HR can delete HER OWN attendance imports"*.)
+
+    The route left `auth.OWNER_ONLY` and is gated by `payroll.delete`; this
+    is the rule on top: an **Owner** may take out any import, anybody else
+    only one **they uploaded**. Matched on `uploaded_by_id` (stamped from this
+    block on); an import staged before it carries only the uploader's NAME,
+    so it is matched on the user's display name or username exactly — never
+    a near match.
+    """
+    user = auth.current_user() if user is None else user
+    if not user or not auth.has_perm("payroll.delete"):
+        return False
+    if auth.is_owner(user):
+        return True
+    by_id = str(rec.get("uploaded_by_id") or "")
+    if by_id:
+        return by_id == str(user.get("id") or "")
+    by = str(rec.get("uploaded_by") or "").strip()
+    return bool(by) and by in {str(user.get("display_name") or "").strip(),
+                               str(user.get("username") or "").strip()}
+
+
 def _rec_or_back(id):
     rec = imports().get(id)
     if not rec:
@@ -1089,7 +1114,11 @@ def upload():
                 parsed.update({"id": sid, "status": STAGED,
                                "month": parsed["month_guess"],
                                "uploaded_at": PAY._now(),
-                               "uploaded_by": PAY._user_name()})
+                               "uploaded_by": PAY._user_name(),
+                               # §0 eighty-sixth block: who, by id, for
+                               # `may_take_out()`.
+                               "uploaded_by_id": str((auth.current_user() or {})
+                                                     .get("id") or "")})
                 imports()[sid] = parsed
                 return redirect(url_for("payimport.preview", id=sid))
 
@@ -1102,7 +1131,8 @@ def upload():
         + (f'<a href="{url_for("payimport.preview", id=r["id"])}">Open</a>'
            if r.get("status") == STAGED else "")
         + (f' <a href="{url_for("payimport.delete_import", id=r["id"])}">Take out</a>'
-           if r.get("status") == COMMITTED and auth.has_perm("payroll.delete")
+           if r.get("status") == COMMITTED
+           and auth.can_reach("payimport.delete_import") and may_take_out(r)
            else "")
         + '</td></tr>' for r in done[:30])
     body = f"""
@@ -1494,10 +1524,16 @@ def commit_import(id):
 
 @payimport_bp.route("/delete/<id>", methods=["GET", "POST"])
 def delete_import(id):
-    """GET confirms, POST destroys — Owner-only (auth.OWNER_ONLY)."""
+    """GET confirms, POST destroys. `payroll.delete`, and — from the
+    eighty-sixth block — an Owner for any import, anybody else for their own
+    (`may_take_out()`). It left `auth.OWNER_ONLY` on 23 November 2026."""
     rec, back = _rec_or_back(id)
     if back:
         return back
+    if not may_take_out(rec):
+        return redirect(url_for("payimport.upload", type="error",
+                                msg=("Only the person who uploaded this import, "
+                                     "or an Owner, can take it out.")))
     error = ""
     if request.method == "POST":
         counts, error = remove(rec)

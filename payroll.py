@@ -1052,6 +1052,10 @@ def view_slip(id):
     if status in (DRAFT, ISSUED) and auth.has_perm("payroll.issue"):
         acts.append(f'<a class="btn btn-ghost" href="'
                     f'{url_for("payroll.cancel_slip", id=id)}">Cancel slip</a>')
+    # §0 eighty-sixth block (23 Nov 2026): a DRAFT can be deleted outright.
+    if status == DRAFT and auth.can_reach("payroll.delete_slip"):
+        acts.append(f'<a class="btn btn-ghost" href="'
+                    f'{url_for("payroll.delete_slip", id=id)}">Delete draft</a>')
     acts.append(f'<a class="btn btn-ghost" href="'
                 f'{url_for("payroll.payroll_register", month=slip["month"])}">'
                 f'&#8592; The month</a>')
@@ -1190,6 +1194,55 @@ def cancel_slip(id):
     <a class="btn btn-ghost" href="{url_for('payroll.view_slip', id=id)}">Back</a>
   </form>"""
     return _shell("Cancel payslip", body)
+
+
+def delete_draft(slip: dict) -> str:
+    """
+    Remove one DRAFT payslip — "" on success, else why not (23 November 2026,
+    CLIENT_CHANGES.md §0 **eighty-sixth** block: HR may delete DRAFT payslips).
+
+    ⚠ **Draft only, for everybody — an Owner included.** An issued slip is a
+      paid month and is withdrawn by CANCELLING it (`cancel()`, unchanged),
+      which keeps it on record with its reason; a cancelled slip is already
+      that record. A draft has written nothing anywhere else — the carry-
+      forward entry is made only at issue — so deleting one leaves no
+      dangling reference, and the month is free for a new draft.
+    """
+    if slip.get("status") != DRAFT:
+        return ("Only a DRAFT payslip can be deleted. An issued slip is "
+                "withdrawn by cancelling it.")
+    if slip.get("carry_entry_id"):
+        return "This draft carries a ledger entry — cancel it instead."
+    slips().pop(slip["id"], None)
+    return ""
+
+
+@payroll_bp.route("/slip/<id>/delete", methods=["GET", "POST"])
+def delete_slip(id):
+    """GET confirms, POST deletes — a DRAFT only (`delete_draft()`)."""
+    slip, back = _slip_or_back(id)
+    if back:
+        return back
+    error = "" if slip.get("status") == DRAFT else delete_draft(slip)
+    if request.method == "POST" and not error:
+        month = slip["month"]
+        error = delete_draft(slip)
+        if not error:
+            return redirect(url_for("payroll.payroll_register", month=month,
+                                    msg="Draft payslip deleted.",
+                                    type="success"))
+    body = f"""
+  {_alert(error)}
+  <div class="page-top"><h1>Delete this draft payslip?</h1></div>
+  <div class="pay-note">{_esc((slip.get('snapshot') or {}).get('employee_name'))},
+    {_esc(month_label(slip['month']))} &mdash; {_esc(slip.get('status'))}.
+    A draft has been issued to nobody; deleting it frees the month for a new
+    draft. Markings and the pay ledger are not touched.</div>
+  <form method="POST" class="form-section">
+    {'' if error else '<button class="btn">Delete the draft</button>'}
+    <a class="btn btn-ghost" href="{url_for('payroll.view_slip', id=id)}">Back</a>
+  </form>"""
+    return _shell("Delete draft payslip", body)
 
 
 @payroll_bp.route("/slip/print/<id>")

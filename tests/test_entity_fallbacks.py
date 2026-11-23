@@ -588,6 +588,7 @@ def populated(client):
             "/attendance/edit/<id>":   "att-1",
             "/payroll/slip/<id>":          psid,
             "/payroll/slip/<id>/cancel":   psid,
+            "/payroll/slip/<id>/delete":   psid,   # §0 86th block, DRAFT only
             "/payroll/slip/print/<id>":    psid,
             "/payroll/entries/edit/<id>":  "pe-1",
             "/payroll/entries/delete/<id>": "pe-1",

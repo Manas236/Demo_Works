@@ -121,7 +121,13 @@ Fast facts so you don't get it wrong before reading:
   order that mirrors the PO. They are named in `auth.PERMISSION_ONLY_DESTROYS`,
   which **nothing reads at runtime** — the gate still consults `OWNER_ONLY` and
   nothing else. The Tax Invoice's cancel stays Owner-only; so do the other
-  twelve. **A new delete route is in neither set and
+  twelve. ⚠ **23 Nov 2026 (§0 eighty-sixth block): taking an attendance
+  import out left `OWNER_ONLY`** (`payroll.delete` + "only your own import"
+  unless Owner, `payimport.may_take_out()`), and a **DRAFT** payslip can be
+  deleted under `payroll.delete` (never an issued one); both are in
+  `PERMISSION_ONLY_DESTROYS`. A separate `auth.OWNER_ONLY_PAGES` (§0
+  eighty-fifth block) gates `/attendance/assign-projects` to the Owner — a
+  page, not a destroy. **A new delete route is in neither set and
   `tests/test_owner_only_delete.py` fails until you choose its tier** — and
   that choice needs a §0 block, not a judgement call. ⚠ **`docs/ACCESS_MATRIX.md`
   does not model this gate at all** and overstates every grant it covers

@@ -365,4 +365,9 @@ def test_a_director_cannot_delete_a_pay_entry(client):
     client.post(f"/payroll/entries/delete/{eid}")
     assert eid in STORE["pay_entries"], "Owner-only, like the marking"
     assert "payroll.delete_entry" in auth.OWNER_ONLY
-    assert "payimport.delete_import" in auth.OWNER_ONLY
+    # ⚠ §0 EIGHTY-SIXTH block (23 Nov 2026): taking an import out left the
+    #   Owner tier — `payroll.delete` plus "only your own import"
+    #   (`payimport.may_take_out()`), tests/test_hr_deletes.py. Was:
+    #       assert "payimport.delete_import" in auth.OWNER_ONLY
+    assert "payimport.delete_import" not in auth.OWNER_ONLY
+    assert "payimport.delete_import" in auth.PERMISSION_ONLY_DESTROYS
