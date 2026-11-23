@@ -22,6 +22,8 @@ What this file holds:
 
 import io
 
+import urllib.parse
+
 import pytest
 
 import attendance as AT
@@ -286,8 +288,25 @@ def test_a_shared_site_is_asked_once_per_site_name(world):
     sid = _upload(world, _jamnagar_book())
     assert _sites(sid) == ["RIL JAMNAGAR", "RIL JAMNAGAR SHED"]
     page = world.get(f"/payroll/import/preview/{sid}?month=2026-09").get_data(as_text=True)
-    assert page.count('name="sproj_') == 2, "one question per site name"
-    assert 'name="proj_' not in page, "and none per worker"
+    # ⚠ SUPERSEDED in part — §0 EIGHTY-FOURTH block (23 Nov 2026, ruled
+    #   6 Nov): at a shared site the project is asked PER WORKER, per sheet
+    #   site, again. A posted `sproj_<i>` is still accepted (below) and no
+    #   longer drawn. Was:
+    #       assert page.count('name="sproj_') == 2, "one question per site name"
+    #       assert 'name="proj_' not in page, "and none per worker"
+    assert 'name="sproj_' not in page, "no once-per-site-name question"
+    assert 'name="proj_' not in page
+    # PUSHKAR (rows 0 and 2) at both sites, NIRAJ (row 1) at the first,
+    # GUDDU (row 3) at the second: four picks, each required, none defaulted.
+    # Neither sheet name is an address label, so no site is picked yet and
+    # the four picks are drawn hidden (the script reveals them on a pick).
+    for name in ("wproj_0_0", "wproj_0_1", "wproj_1_0", "wproj_3_1"):
+        assert page.count(f'name="{name}"') == 1, name
+    refused = world.post(f"/payroll/import/commit/{sid}", data=_form(sid))
+    page = world.get(refused.headers["Location"]).get_data(as_text=True)
+    for name in ("wproj_0_0", "wproj_0_1", "wproj_1_0", "wproj_3_1"):
+        cell = page.split(f'name="{name}"')[1].split(">")[0]
+        assert "required" in cell and "disabled" not in cell, name
 
     r = world.post(f"/payroll/import/commit/{sid}", data=_form(sid))
     assert STORE["attendance"] == {}, "unanswered: refused before any write"
@@ -320,12 +339,75 @@ def test_a_saved_mapping_answers_the_next_import(world):
     # is no address label, so before it could only be picked by hand.
     assert page.count('<option value="jam" selected>') == 2
 
-    # Posting only the site (no project answer at all): the saved one is used.
+    # ⚠ SUPERSEDED in part — §0 EIGHTY-FOURTH block (23 Nov 2026): the
+    #   saved mapping still preselects the SITE, and no longer answers a
+    #   shared site's PROJECT. The two selected options above now come from
+    #   each worker's own September at that address (NIRAJ all p-jam, GUDDU
+    #   all p-shed); PUSHKAR split September across both, so his picks open
+    #   blank and a commit without them is refused. Was:
+    #       # Posting only the site (no project answer at all): the saved one is used.
+    #       form = {k: v for k, v in _form(oct_sid, month="2026-10").items()}
+    #       world.post(f"/payroll/import/commit/{oct_sid}", data=form)
+    #       pk = _by_day("pk", "2026-10")
+    #       assert {pk[f"{d:02d}"]["project_id"] for d in range(1, 16)} == {"p-jam"}
+    #       assert {pk[f"{d:02d}"]["project_id"] for d in range(16, 31)} == {"p-shed"}
+    assert '<option value="p-jam" selected>' in page.split('name="wproj_1_0"')[1].split("</select>")[0]
+    assert '<option value="p-shed" selected>' in page.split('name="wproj_3_1"')[1].split("</select>")[0]
+    for name in ("wproj_0_0", "wproj_0_1"):
+        assert " selected>" in page.split(f'name="{name}"')[1].split("</select>")[0].split("</option>")[0], \
+            "PUSHKAR's picks open on the blank option"
     form = {k: v for k, v in _form(oct_sid, month="2026-10").items()}
-    world.post(f"/payroll/import/commit/{oct_sid}", data=form)
+    r = world.post(f"/payroll/import/commit/{oct_sid}",
+                   data=dict(form, wproj_1_0="p-jam", wproj_3_1="p-shed"))
+    assert AT.month_markings("pk", "2026-10") == []
+    assert AT.month_markings("nk", "2026-10") == [], "refused before any write"
+    assert "PUSHKAR MISHRA at" in urllib.parse.unquote_plus(r.headers["Location"])
+    world.post(f"/payroll/import/commit/{oct_sid}",
+               data=dict(form, wproj_1_0="p-jam", wproj_3_1="p-shed",
+                         wproj_0_0="p-jam", wproj_0_1="p-shed"))
     pk = _by_day("pk", "2026-10")
     assert {pk[f"{d:02d}"]["project_id"] for d in range(1, 16)} == {"p-jam"}
     assert {pk[f"{d:02d}"]["project_id"] for d in range(16, 31)} == {"p-shed"}
+    assert {m["project_id"] for m in AT.month_markings("gk", "2026-10")} == {"p-shed"}
+
+
+def test_workers_on_one_shared_site_tab_go_to_different_projects(world):
+    """§0 eighty-fourth block, the case the client hit: ONE tab whose site
+    name maps to an address carrying RIL Jamnagar AND the Shed, its workers
+    split between the two. Refused before, now one pick per worker."""
+    sid = _upload(world, book([("RIL JAMNAGAR", [
+        {"name": "NIRAJ KUMAR", "marks": {d: (1, None) for d in range(1, 11)}},
+        {"name": "GUDDU KUMAR", "marks": {d: (1, None) for d in range(1, 11)}}])]))
+    form = _form(sid)
+    r = world.post(f"/payroll/import/commit/{sid}", data=form)
+    assert STORE["attendance"] == {}
+    loc = urllib.parse.unquote_plus(r.headers["Location"])
+    assert "NIRAJ KUMAR at “RIL JAMNAGAR”" in loc
+    page = world.get(r.headers["Location"]).get_data(as_text=True)
+    assert 'name="wproj_0_0"' in page and 'name="wproj_1_0"' in page
+    world.post(f"/payroll/import/commit/{sid}",
+               data=dict(form, wproj_0_0="p-jam", wproj_1_0="p-shed"))
+    assert {m["project_id"] for m in AT.month_markings("nk", "2026-09")} == {"p-jam"}
+    assert {m["project_id"] for m in AT.month_markings("gk", "2026-09")} == {"p-shed"}
+    assert len(AT.month_markings("nk", "2026-09")) == 10
+
+
+def test_a_pick_of_a_project_elsewhere_is_refused_per_worker(world):
+    sid = _upload(world, book([("RIL JAMNAGAR", [
+        {"name": "NIRAJ KUMAR", "marks": {1: (1, None)}}])]))
+    r = world.post(f"/payroll/import/commit/{sid}",
+                   data=dict(_form(sid), wproj_0_0="no-such-project"))
+    assert STORE["attendance"] == {}
+    assert "not at that site" in urllib.parse.unquote_plus(r.headers["Location"])
+
+
+def test_a_refused_commit_carries_the_per_worker_picks_back(world):
+    sid = _upload(world, _jamnagar_book())
+    r = world.post(f"/payroll/import/commit/{sid}",
+                   data=dict(_form(sid), wproj_1_0="p-shed"))
+    assert "wproj_1_0=p-shed" in r.headers["Location"]
+    page = world.get(r.headers["Location"]).get_data(as_text=True)
+    assert '<option value="p-shed" selected>' in page.split('name="wproj_1_0"')[1].split("</select>")[0]
 
 
 # ── 4. the last-month default fills only days with no site ─────────────────
@@ -391,3 +473,18 @@ def test_a_differing_day_rate_between_tabs_is_not_imported(world):
     assert "PER DAY SALARY differs between tabs" in page
     world.post(f"/payroll/import/commit/{sid}", data=_form(sid))
     assert STORE["employees"]["pk"]["day_rate"] == 0.0
+
+
+# ── 6. the per-worker default — last month AT THAT SITE (§0 84th block) ────
+
+def test_last_month_at_a_site_is_unanimous_only_and_site_scoped(world):
+    _august("nk", "p-shed")
+    assert AT.project_last_month_at("nk", "2026-09", "jam")["project_id"] == "p-shed"
+    assert AT.project_last_month_at("nk", "2026-09", "other") == {}, \
+        "another address answers nothing"
+    assert AT.project_last_month_at("nk", "2026-09", "") == {}
+    STORE["attendance"]["aug-nk-12"] = dict(
+        STORE["attendance"]["aug-nk-10"], id="aug-nk-12", date="2026-08-12",
+        project_id="p-jam")
+    assert AT.project_last_month_at("nk", "2026-09", "jam") == {}, \
+        "a split month is no answer"

@@ -1285,6 +1285,51 @@ def project_last_month(employee_id, month) -> dict:
             "project_last_month": prev}
 
 
+def project_last_month_at(employee_id, month, address_id) -> dict:
+    """
+    `project_last_month()`'s answer, narrowed to ONE address-book SITE: the
+    project this worker's days AT THAT SITE were booked to in the month
+    before `month`, or `{}` (23 November 2026, CLIENT_CHANGES.md §0
+    **eighty-fourth** block — the import's per-worker pick on a shared site
+    defaults to *"the project that worker was on at that site last month"*).
+
+    ⚠ **Unanimous only, and only a project still filed AT that site** — a
+      worker who split last month's days at that address across RIL Jamnagar
+      and RIL Jamnagar Shed has no single answer, so the pick opens blank and
+      the commit refuses until somebody chooses. Overhead at that site is an
+      answer and is returned as one. A blank address answers nothing.
+    """
+    eid = str(employee_id or "").strip()
+    key = str(month or "").strip()[:7]
+    aid = str(address_id or "").strip()
+    if not eid or not aid or len(key) != 7:
+        return {}
+    y, m = int(key[:4]), int(key[5:7])
+    prev = f"{y - 1}-12" if m == 1 else f"{y}-{m - 1:02d}"
+    rows = [r for r in month_markings(eid, prev)
+            if str(r.get(EMP.SITE_ADDRESS_FIELD) or "").strip() == aid]
+    if not rows:
+        return {}
+    here = {str(p.get("id")): p for p in projects_on_site(aid)}
+    answers = set()
+    for r in rows:
+        if is_overhead(r):
+            answers.add(OVERHEAD_CHOICE)
+            continue
+        pid = str(r.get("project_id") or "").strip()
+        answers.add(pid if pid in here else "")
+    if len(answers) != 1:
+        return {}
+    only = answers.pop()
+    if only == OVERHEAD_CHOICE:
+        return dict(overhead_fields(True), project_last_month=prev)
+    if not only:
+        return {}
+    return {"project_id": only,
+            "project_name": str(here[only].get("name") or ""),
+            "project_last_month": prev}
+
+
 def assign_month(employee_id, month, choice: str, actor_id: str = "",
                  site=None) -> tuple:
     """

@@ -25,6 +25,7 @@ before → after on each marking.
 
 import datetime
 import io
+import urllib.parse
 
 import pytest
 
@@ -149,8 +150,14 @@ def test_two_projects_at_the_site_refuse_the_commit_without_a_per_worker_pick(cl
     # ⚠ §0 sixty-eighth block (6 Nov 2026): the question is asked once per
     #   SITE NAME now, so the refusal names the site. Was:
     #       assert "choose which one for this person" in r.headers["Location"] …
-    assert "choose which one this site name means" in r.headers["Location"] \
-        or "choose+which+one+this+site+name+means" in r.headers["Location"]
+    # ⚠ §0 EIGHTY-FOURTH block (23 Nov 2026, ruled 6 Nov): the project at a
+    #   shared site is per WORKER again, so the refusal names the person AND
+    #   the site. Was (sixty-eighth block):
+    #       assert "choose which one this site name means" in r.headers["Location"] \
+    #           or "choose+which+one+this+site+name+means" in r.headers["Location"]
+    loc = urllib.parse.unquote_plus(r.headers["Location"])
+    assert "PUSHKAR MISHRA at “ROADPALI”" in loc
+    assert "choose which one for this person" in loc
     assert STORE["pay_imports"][sid]["status"] == PI.STAGED
 
 
@@ -228,9 +235,17 @@ def test_last_month_no_longer_answers_a_day_the_sheet_gives_a_site_for(client):
     page = client.get(f"/payroll/import/preview/{sid}?month=2026-09") \
         .get_data(as_text=True)
     assert 'name="proj_0"' not in page
-    assert 'name="sproj_0"' in page
-    assert '<option value="p2" selected>' not in page, \
-        "August's project does not answer a site the sheet names"
+    # ⚠ §0 EIGHTY-FOURTH block (23 Nov 2026, ruled 6 Nov): the shared site's
+    #   project is a per-WORKER pick again, defaulting to that worker's project
+    #   AT THAT SITE last month — and August's two days were at this very
+    #   address on p2, so p2 is now preselected, for this worker only. Was:
+    #       assert 'name="sproj_0"' in page
+    #       assert '<option value="p2" selected>' not in page, \
+    #           "August's project does not answer a site the sheet names"
+    assert 'name="sproj_0"' not in page
+    assert page.count('name="wproj_0_0"') == 1
+    assert '<option value="p2" selected>' in page
+    assert '<option value="p1" selected' not in page
 
 
 def test_a_split_last_month_gives_no_default_at_all(client):

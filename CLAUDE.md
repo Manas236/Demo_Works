@@ -203,8 +203,11 @@ Fast facts so you don't get it wrong before reading:
   presentation. ⚠ **The import reads EVERY TAB — one tab per site** (§0
   sixty-eighth block, 6 Nov 2026): a tab's site is its SITE column, else its
   name; one person across tabs is one worker-month; a day on two tabs is
-  imported on neither; a shared site's project is asked once per SITE NAME
-  and saved (`settings["pay_import_sites"]`) for the next import; the
+  imported on neither; the site is asked once per SITE NAME and saved
+  (`settings["pay_import_sites"]`); ⚠ at a shared site the PROJECT is
+  asked PER WORKER (`wproj_<row>_<site>`, §0 eighty-fourth block, 23 Nov
+  2026), defaulting to that worker's project at that address last month,
+  else blank and required — the saved mapping no longer answers it; the
   last-month default fills only days with no site. Before that block the
   project was decided per worker at import,
   with a **No project (overhead)** choice; `labour_overhead` is stored **only

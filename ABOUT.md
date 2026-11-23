@@ -13425,6 +13425,26 @@ on several tabs, and their day cells on each tab are their days at that site.
   the sixty-sixth block's per-worker picker, which is no longer drawn (a POST
   carrying `proj_<i>` is still accepted where no site-level answer exists). An
   unanswered shared site still refuses the commit before anything is written.
+* ⚠ **SUPERSEDED for the PROJECT on 23 November 2026 (CLIENT_CHANGES.md §0
+  eighty-fourth block, ruled 6 Nov): at a shared site the project is PER
+  WORKER again.** One sheet site name can hold workers of both projects at
+  one address (a single JAMNAGAR tab, RIL Jamnagar and the Shed), and a
+  once-per-name answer left blank refused the whole commit ("2 projects are
+  at that site"). The preview draws `wproj_<first row>_<site index>` in each
+  worker's *Sites* cell for every sheet site whose picked address carries
+  two or more projects (drawn hidden and disabled otherwise, so a
+  single-project site behaves exactly as before; the page script reveals it
+  when the site select changes). Default: that worker's project **at that
+  address** last month (`attendance.project_last_month_at()`, unanimous
+  only, overhead counts), else blank and required; the commit refuses a
+  blank naming the person and the site, and `resolve_row_project()` refuses
+  a project not at the row's site. `sproj_<i>` is **no longer drawn** and is
+  still accepted when posted (a site-wide answer); `proj_<i>` likewise. The
+  saved mapping **still preselects the SITE and no longer answers the
+  PROJECT** — a one-project-per-name default is the defect. Every refused
+  commit now carries the operator's picks back (`emp_`, `site_`, `rate_`,
+  `wproj_`, …), not only the linked-clash refusal. One worker, one site per
+  day is unchanged (`worker_days()` / `linked_clashes()`).
 * **The answers are SAVED and reused** —
   `STORE["settings"]["pay_import_sites"]`, `{"sites": {norm(name): {"label",
   "site", "project", "saved_at"}}}`, written by a successful commit. The next

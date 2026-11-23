@@ -7594,6 +7594,56 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 23 November 2026, client-fix brief (ruled 6 November 2026) — ATTENDANCE IMPORT: THE PROJECT AT A SHARED SITE IS PICKED PER WORKER · NO CHARGE
+>
+> **A new block, not an amendment.** The **eighty-fourth** occasion, written
+> on `antigravity-dev` from `1b8137f` (production = origin tip, confirmed
+> before any change). Item 1 of the 23 November brief. Recorded **"authorised,
+> no charge"**.
+>
+> **What prompted it.** A sheet site name that maps to an address carrying
+> two or more projects refused the commit ("2 projects are at that site") —
+> RIL Jamnagar and RIL Jamnagar Shed share one site address, and the
+> sixty-eighth block's once-per-site-name answer cannot say that the workers
+> on one JAMNAGAR tab are split between them.
+>
+> **What was built** (`payimport.py`, one new reader in `attendance.py`):
+> on the import preview, each worker on a shared site gets a project select
+> for their rows at that site (`wproj_<first row>_<site index>`), defaulting
+> to the project that worker was on **at that address** last month
+> (`attendance.project_last_month_at()`, unanimous only, overhead counts),
+> else blank and required. The commit refuses a blank, naming the person and
+> the site, and refuses a project not at the row's site. Single-project
+> sites behave exactly as before. One worker, one site per day is unchanged.
+> Built on `727e28d`.
+>
+> **Judgement calls, declared:**
+> 1. **The saved site mapping no longer answers a shared site's PROJECT**;
+>    it still preselects the address. A remembered one-project-per-name
+>    answer is the very default this block removes.
+> 2. **`sproj_<i>` is no longer drawn and is still ACCEPTED** when posted, as
+>    a site-wide answer — refusing it would turn a scripted or saved post
+>    into a lost import. `proj_<i>` (sixty-sixth block) likewise.
+> 3. **"At that site" is the ADDRESS**, not the sheet's tab name: a marking
+>    stores the address, not the tab, so a worker who split last month across
+>    the two projects at that one address gets no default.
+> 4. **Every refused commit now carries the operator's picks back** (it was
+>    only the linked-clash refusal), so a missed per-worker pick does not
+>    cost the others.
+> 5. **A worker's pick is drawn hidden** until the site's picked address
+>    carries two or more projects; the page script reveals it when the site
+>    select changes, and without script a refused commit brings it back
+>    visible.
+> 6. **`/attendance/mark` was checked and has NO such gap**: it already
+>    carries a per-worker project select that is required on a shared site,
+>    with the (whole-month, unanimous) last-month default. Not changed.
+>
+> **Tests.** Four tests pinning the sixty-eighth block's rule were rewritten
+> with their old assertions quoted verbatim (`test_labour_assign.py` ×2,
+> `test_payimport_tabs.py` ×2); five tests added. No golden moved.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is

@@ -820,6 +820,11 @@ def _no_site_project(person: dict, month: str) -> dict:
 # THE WRITE
 # =============================================================================
 
+def worker_pick_name(first: int, site_index: int) -> str:
+    """The form name of one worker's project pick at one shared sheet site."""
+    return f"wproj_{int(first)}_{int(site_index)}"
+
+
 LINKED_CLASH_ERROR = ("Two rows are linked to the same employee and both "
                       "mark the same day — flagged below. Those days will "
                       "be imported on NEITHER row; commit again to go "
@@ -839,12 +844,18 @@ def commit(rec: dict, form) -> tuple:
         return {}, (f"{PAY.month_label(month)} was already imported. Take that "
                     f"import out first.")
 
-    # ⚠ **The site AND, where it is shared, the project — once per SITE NAME**
-    #   (§0 sixty-eighth block). A tab is a site, so the name already says which
-    #   of two projects at one address the days were for; the answer comes from
-    #   `sproj_<i>`, else from the saved mapping for that name. Only where
-    #   neither answers does a project fall to the per-worker `proj_<i>` of the
-    #   sixty-sixth block, still accepted, no longer drawn.
+    # ⚠ **The SITE once per site name; at a SHARED site the PROJECT per
+    #   WORKER** (23 November 2026, §0 **eighty-fourth** block, ruled 6 Nov).
+    #   The sixty-eighth block answered the project once per site name, which
+    #   cannot say that half of one JAMNAGAR tab worked for RIL Jamnagar and
+    #   half for the Shed — and left blank it refused the whole commit
+    #   ("2 projects are at that site"). Now each worker's rows at a shared
+    #   site carry their own `wproj_<first row>_<site index>`. A posted
+    #   `sproj_<i>` (no longer drawn) is still a site-wide answer, and the
+    #   sixty-sixth block's `proj_<i>` is still accepted per worker.
+    #   ⚠ **The SAVED mapping no longer answers a shared site's project** — a
+    #   one-project-per-name default is the defect this block closes. It still
+    #   preselects the address.
     mapping, answers = {}, {}
     for i, site in enumerate(rec["sites"]):
         raw = str(form.get(f"site_{i}") or "").strip()
@@ -853,15 +864,11 @@ def commit(rec: dict, form) -> tuple:
             return {}, f"Site “{site}”: {err}."
         if pf is None:
             sp = str(form.get(f"sproj_{i}") or "").strip()
-            if not sp:
-                saved = saved_for(site)
-                if saved.get("site") == sf.get(EMP.SITE_ADDRESS_FIELD):
-                    sp = str(saved.get("project") or "")
             if sp:
                 pf, perr = resolve_row_project(sp, sf)
                 if perr:
                     return {}, f"Site “{site}”: {perr}."
-                answers[site] = (sf[EMP.SITE_ADDRESS_FIELD], sp)
+            answers[site] = (sf[EMP.SITE_ADDRESS_FIELD], sp)
         else:
             _a, _, given = raw.partition("|")
             answers[site] = (_site_value_of(sf, pf), given)
@@ -880,14 +887,17 @@ def commit(rec: dict, form) -> tuple:
                   and mapping.get(rec["rows"][i]["site"], ({}, {}))[1] is None}
         for site in sorted(shared):
             sf = mapping[site][0]
-            if not str(form.get(f"proj_{first}") or "").strip():
+            si = rec["sites"].index(site)
+            value = str(form.get(worker_pick_name(first, si)) or "").strip() \
+                or str(form.get(f"proj_{first}") or "").strip()
+            if not value:
                 n = len(AT.projects_on_site(sf.get(EMP.SITE_ADDRESS_FIELD)))
-                return {}, (f"Site “{site}”: {n} projects are at that site — "
-                            f"choose which one this site name means, or "
-                            f"“No project (overhead)”.")
-            pf, perr = resolve_row_project(form.get(f"proj_{first}"), sf)
+                return {}, (f"{w['name']} at “{site}”: {n} projects are at "
+                            f"that site — choose which one for this person, "
+                            f"or “No project (overhead)”.")
+            pf, perr = resolve_row_project(value, sf)
             if perr:
-                return {}, f"{w['name']}: {perr}."
+                return {}, f"{w['name']} at “{site}”: {perr}."
             worker_pick[(first, site)] = pf
 
     # ⚠ **Two rows linked to one employee, one day marked on both** (§0
@@ -1115,27 +1125,40 @@ def upload():
     return PAY._shell("Import attendance", body)
 
 
-def _site_project_cell(i: int, site: str, site_value: str, saved: dict) -> str:
+def _worker_project_cell(first: int, si: int, site: str, site_value: str,
+                         person: dict, month: str) -> str:
     """
-    The project control for ONE SHEET SITE NAME (§0 sixty-eighth block):
-    drawn only where the picked address carries two or more live projects,
-    prefilled from the saved mapping when it answers for that same address.
-    It replaces the sixty-sixth block's per-worker picker — a tab is a site,
-    so the site's NAME says which project, once for everybody on it.
+    ONE worker's project pick for their rows at ONE sheet site (23 November
+    2026, CLIENT_CHANGES.md §0 **eighty-fourth** block, ruled 6 Nov) —
+    replacing the sixty-eighth block's once-per-site-name control, which
+    could not split one JAMNAGAR tab between RIL Jamnagar and the Shed.
 
-    ⚠ It carries `data-row-project` and `data-sheet-site` (the sheet's site
-      name), so the page's script re-populates it when the site select
-      changes, exactly as it did the per-worker control. The server decides:
-      `resolve_row_project()` refuses a project not at that site.
+    Drawn for every (worker, named site) pair and **hidden and disabled**
+    unless the site's picked address carries two or more projects, so a
+    single-project site behaves exactly as before and the page's script can
+    reveal it when the site select changes. Default: a pick carried back from
+    a refused commit, else `attendance.project_last_month_at()` — that
+    worker's project AT THAT SITE last month, unanimous only — else blank and
+    `required`. ⚠ The server decides: `resolve_row_project()` refuses a blank
+    and a project not at the row's site.
     """
+    name = worker_pick_name(first, si)
     at = (AT.projects_on_site(site_value)
           if site_value and site_value != OVERHEAD else [])
+    attrs = (f'name="{name}" data-row-project="{si}" '
+             f'data-sheet-site="{_esc(site)}"')
     if len(at) < 2:
-        return (f'<select name="sproj_{i}" data-row-project="{i}" '
-                f'data-sheet-site="{_esc(site)}" disabled>'
-                f'<option value="">&mdash;</option></select>')
-    want = str(saved.get("project") or "") if saved.get("site") == site_value else ""
+        return (f'<label class="pay-sub" hidden><br>{_esc(site)} project: '
+                f'<select {attrs} disabled>'
+                f'<option value="">&mdash;</option></select></label>')
     ids = [str(p.get("id")) for p in at]
+    if name in request.args:
+        want = str(request.args.get(name) or "")
+    else:
+        last = (AT.project_last_month_at(person.get("id"), month, site_value)
+                if person and person.get("id") and month else {})
+        want = (OVERHEAD if last.get(AT.OVERHEAD_FIELD)
+                else str(last.get("project_id") or ""))
     if want not in ids + [OVERHEAD]:
         want = ""
     opts = [f'<option value=""{"" if want else " selected"}>'
@@ -1148,8 +1171,9 @@ def _site_project_cell(i: int, site: str, site_value: str, saved: dict) -> str:
     opts.append(f'<option value="{_esc(OVERHEAD)}"'
                 f'{" selected" if want == OVERHEAD else ""}>'
                 f'No project (overhead)</option>')
-    return (f'<select name="sproj_{i}" data-row-project="{i}" '
-            f'data-sheet-site="{_esc(site)}">{"".join(opts)}</select>')
+    hint = " (last month)" if want and name not in request.args else ""
+    return (f'<label class="pay-sub"><br>{_esc(site)} project{hint}: '
+            f'<select {attrs} required>{"".join(opts)}</select></label>')
 
 
 @payimport_bp.route("/preview/<id>")
@@ -1172,6 +1196,11 @@ def preview(id):
         valid = {v for v, _l, _a in choices}
         pick = (saved.get("site") if saved.get("site") in valid
                 else preselect(site, choices))
+        # A pick carried back from a refused commit wins over the preselect
+        # (§0 eighty-fourth block — every refusal now carries the picks back).
+        if f"site_{i}" in request.args:
+            got = str(request.args.get(f"site_{i}") or "")
+            pick = got if got in valid else ""
         site_pick[site] = pick
         opts = ['<option value="">— choose —</option>'] + [
             f'<option value="{_esc(v)}"{" selected" if v == pick else ""}>'
@@ -1185,7 +1214,7 @@ def preview(id):
         elif len(at) > 1:
             note = (f'{len(at)} projects here: '
                     + ", ".join(str(p.get("name") or "") for p in at)
-                    + " — say which one this site name means")
+                    + " — choose the project for each person below")
         elif len(at) == 1:
             note = f'one project here: {at[0].get("name") or ""} — assigned'
         elif pick:
@@ -1193,11 +1222,10 @@ def preview(id):
         else:
             note = ""
         if saved and saved.get("site") == pick:
-            note += " · saved from an earlier import"
+            note += " · site saved from an earlier import"
         site_rows += (f'<tr><td><b>{_esc(site)}</b></td>'
                       f'<td><select name="site_{i}" data-sheet-site="{i}" '
                       f'required>{"".join(opts)}</select></td>'
-                      f'<td>{_site_project_cell(i, site, pick, saved)}</td>'
                       f'<td class="pay-sub">{_esc(note)}</td></tr>')
 
     people = sorted(EMP.employees().values(),
@@ -1271,6 +1299,10 @@ def preview(id):
             per_site[key] = per_site.get(key, 0) + 1
         where = "; ".join(
             f"{_esc(k) if k else 'no site'}: {n} d" for k, n in per_site.items())
+        where += "".join(
+            _worker_project_cell(i, rec["sites"].index(k), k, site_pick.get(k, ""),
+                                 hit, month)
+            for k in per_site if k and k in rec["sites"])
         if per_site.get(""):
             last = _no_site_project(hit, month) if hit and month else {}
             where += (" &mdash; no-site days take "
@@ -1351,7 +1383,8 @@ def preview(id):
   </form>
 <script>
 /* Re-populate each worker's PROJECT control when its sheet SITE changes
-   (5 November 2026, CLIENT_CHANGES.md §0's sixty-sixth block, ruling 2).
+   (5 November 2026, CLIENT_CHANGES.md §0's sixty-sixth block, ruling 2;
+   per worker AT EACH SHARED SITE again from the eighty-fourth block).
 
    ⚠ It decides NOTHING. `resolve_choice()` and `resolve_row_project()` re-read
      STORE["projects"] on the POST and refuse a project that is not at the
@@ -1405,8 +1438,16 @@ def preview(id):
           oh.value = OVERHEAD;
           oh.textContent = "No project (overhead)";
           box.appendChild(oh);
-          box.value = sel.value === OVERHEAD ? OVERHEAD : "";
-          box.disabled = list.length < 2 && sel.value !== OVERHEAD;
+          /* Per WORKER from the eighty-fourth block: shown, enabled and
+             required only where the picked address carries two or more
+             projects; opened blank, never defaulted here. */
+          var shared = list.length >= 2;
+          box.value = "";
+          box.disabled = !shared;
+          box.required = shared;
+          if (box.parentNode && box.parentNode.tagName === "LABEL") {{
+            box.parentNode.hidden = !shared;
+          }}
         }}
       }});
     }})(selects[s]);
@@ -1427,13 +1468,13 @@ def commit_import(id):
                                 type="error"))
     summary, error = commit(rec, request.form)
     if error:
-        keep = {}
-        if error == LINKED_CLASH_ERROR:
-            # The operator's picks travel back, so the preview shows the
-            # clash THEY made, not the one its own name match would make.
-            keep = {k: v for k, v in request.form.items()
-                    if k.startswith(("emp_", "rate_", "site_", "sproj_",
-                                     "proj_"))}
+        # The operator's picks travel back, so the preview shows the clash
+        # THEY made, not the one its own name match would make — and, from
+        # the eighty-fourth block, on EVERY refusal, so a per-worker project
+        # pick left blank does not cost the operator the ones already made.
+        keep = {k: v for k, v in request.form.items()
+                if k.startswith(("emp_", "rate_", "site_", "sproj_",
+                                 "proj_", "wproj_"))}
         return redirect(url_for("payimport.preview", id=id,
                                 month=request.form.get("month"),
                                 msg=error, type="error", **keep))
