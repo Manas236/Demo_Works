@@ -638,6 +638,10 @@ def _parse_lines(form) -> tuple:
     # Make (26 Oct 2026) — free text, optional, indexed like the discount: a
     # short list is a POST from a form that predates the box, and reads blank.
     makes = form.getlist("line_make")
+    # A picture from the named library (23 Nov 2026, §0 eighty-eighth block),
+    # indexed like the make: a POST from a form that draws no picture column
+    # carries none, and its lines carry no picture — exactly as before.
+    images = form.getlist("line_image")
 
     items = []
     for idx, (pid, qty_raw, rate_raw) in enumerate(zip(ids, qtys, rates)):
@@ -699,6 +703,10 @@ def _parse_lines(form) -> tuple:
             # Absent on a catalogue line, so its shape is byte-for-byte as it was.
             **src,
         })
+        # ⚠ **Only an id the library offers for THIS item** — `apply_choice()`
+        #   ignores anything else, so a crafted POST attaches nothing.
+        if idx < len(images) and str(images[idx] or "").strip():
+            LI.apply_choice(items[-1], images[idx])
 
     return items, ""
 
@@ -2410,6 +2418,78 @@ def list_purchases():
     return _page(template)
 
 
+def _create_picture_offers(spec_entries: list, boq_entries: list,
+                           hidden: bool) -> dict:
+    """
+    `{item value: [[image id, name], …]}` — what the named picture library
+    offers each item on `/purchase/create`'s dropdown (23 November 2026,
+    CLIENT_CHANGES.md §0 **eighty-eighth** block).
+
+    Keyed by the dropdown's VALUE so the page's script can follow the item
+    the operator picks; each value is resolved to the line it will become
+    (`buypick.resolve()`, or the catalogue product) and asked
+    `lineimage.library_for()` — the same identity `apply_choice()` checks on
+    the POST, so what is offered is exactly what is accepted. `{}` while the
+    library is empty, so a deployment with no pictures computes nothing.
+    """
+    if not (STORE.get(LI.COLLECTION) or {}):
+        return {}
+    out = {}
+    probes = []
+    for e in list(spec_entries or []) + list(boq_entries or []):
+        ident, err = BYP.resolve(e["value"])
+        if not err and ident:
+            probes.append((e["value"], {"part_no": ident.get("part_no") or "",
+                                        "name": ident.get("name") or ""}))
+    if not hidden:
+        for pid, p in (STORE.get("products") or {}).items():
+            probes.append((pid, {"part_no": p.get("part_no") or "",
+                                 "name": p.get("name") or ""}))
+    for value, line in probes:
+        offers = LI.library_for(line)
+        if offers:
+            out[str(value)] = [[iid, name] for iid, name in offers]
+    return out
+
+
+def _create_picture_script(offers: dict) -> str:
+    """
+    The create form's picture select follows the picked item — `""` when the
+    library offers nothing, so the page is byte-for-byte what it was.
+
+    ⚠ It DECIDES nothing: the POST re-checks every id with
+    `lineimage.apply_choice()` against the line's own identity. It opens at
+    the item's newest library picture — *"the same item reuses the same
+    picture"* — and the operator may choose another or none.
+    """
+    if not offers:
+        return ""
+    return f"""<script>
+        var PICS = {P.json_for_script(offers)};
+        /* Wrap fillRate(): every row's item select already calls it. */
+        var _fillRateNoPic = fillRate;
+        fillRate = function (sel) {{
+          _fillRateNoPic(sel);
+          var box = sel.closest('.line-row').querySelector('select[name="line_image"]');
+          if (!box) return;
+          var list = PICS[sel.value] || [];
+          while (box.firstChild) {{ box.removeChild(box.firstChild); }}
+          var none = document.createElement('option');
+          none.value = ''; none.textContent = '\u2014 no picture \u2014';
+          box.appendChild(none);
+          for (var i = 0; i < list.length; i++) {{
+            var o = document.createElement('option');
+            o.value = list[i][0];
+            /* textContent, never innerHTML — a picture name is free text. */
+            o.textContent = list[i][1] || ('picture ' + list[i][0].slice(0, 8));
+            box.appendChild(o);
+          }}
+          box.value = list.length ? list[0][0] : '';
+          box.hidden = !list.length;
+        }};
+      </script>"""
+
+
 @purchase_bp.route("/create", methods=["GET", "POST"])
 def create_purchase(imported: dict = None):
     """
@@ -2635,14 +2715,16 @@ def create_purchase(imported: dict = None):
     prior_rates = f.getlist("line_rate")       if request.method == "POST" else []
     prior_discs = f.getlist("line_discount")   if request.method == "POST" else []
     prior_makes = f.getlist("line_make")       if request.method == "POST" else []
+    prior_imgs  = f.getlist("line_image")      if request.method == "POST" else []
     # `zip` on four lists would silently drop every row if the discount list
     # came in short, so it is indexed separately and a missing one reads blank.
-    # The make (26 Oct 2026) the same way.
+    # The make (26 Oct 2026) the same way, and the picture (23 Nov 2026).
     rows_data = [(i, q, r, prior_discs[n] if n < len(prior_discs) else "",
-                  prior_makes[n] if n < len(prior_makes) else "")
+                  prior_makes[n] if n < len(prior_makes) else "",
+                  prior_imgs[n] if n < len(prior_imgs) else None)
                  for n, (i, q, r) in enumerate(zip(prior_ids, prior_qtys, prior_rates))]
     while len(rows_data) < DEFAULT_LINE_ROWS:
-        rows_data.append(("", "", "", "", ""))
+        rows_data.append(("", "", "", "", "", None))
 
     # The two buypick sources, built ONCE for every row on the page (31 Oct
     # 2026). The library only while the catalogue is hidden; the BOQ items
@@ -2659,8 +2741,23 @@ def create_purchase(imported: dict = None):
     #   never lost to a script.
     all_options = _product_options("", spec=spec_entries, boq=boq_entries)
     placeholder_only = '<option value="">&#8212; select item &#8212;</option>'
+    # Pictures from the named library (23 Nov 2026, §0 eighty-eighth block):
+    # `{item value: [[image id, name], …]}`, newest first. EMPTY — and then no
+    # control, no script, byte-for-byte the old form — while no item on offer
+    # has a picture in the library.
+    pic_offers = _create_picture_offers(spec_entries, boq_entries, hidden)
 
-    def _pick_cell(sel: str = "") -> str:
+    def _pic_select(sel: str, posted) -> str:
+        offers = pic_offers.get(sel) or []
+        want = (offers[0][0] if offers else "") if posted is None else str(posted or "")
+        opts = ['<option value="">&#8212; no picture &#8212;</option>'] + [
+            f'<option value="{iid}"{" selected" if iid == want else ""}>'
+            f'{P.esc(name or "picture " + iid[:8])}</option>' for iid, name in offers]
+        return (f'<select name="line_image" aria-label="Picture" '
+                f'title="Picture from the library" style="font-size:.8rem;"'
+                f'{"" if offers else " hidden"}>{"".join(opts)}</select>')
+
+    def _pick_cell(sel: str = "", posted_img=None) -> str:
         # The search box has no `name`, so it is never posted. Styled on the
         # element: PURCHASE_STYLES is also the printed order's stylesheet and
         # a rule added there would move the pinned PO print golden.
@@ -2672,13 +2769,14 @@ def create_purchase(imported: dict = None):
                 f'autocomplete="off" style="font-size:.8rem;padding:.3rem .5rem;"/>'
                 f'<select name="line_product_id" onchange="fillRate(this)">'
                 f'{opts}</select>'
-                f'</div>')
+                + (_pic_select(sel, posted_img) if pic_offers else "")
+                + f'</div>')
 
     lines_html = ""
-    for sel, qty, rate, disc, make in rows_data:
+    for sel, qty, rate, disc, make, img in rows_data:
         lines_html += f"""
         <div class="line-row">
-          {_pick_cell(sel)}
+          {_pick_cell(sel, img)}
           <input type="text" name="line_make" value="{P.esc(make)}" maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
           <input type="number" name="line_qty" value="{P.esc(qty)}" min="0" step="any" placeholder="Qty"/>
           <input type="number" name="line_rate" value="{P.esc(rate)}" min="0" step="0.01" placeholder="Rate"/>
@@ -3019,7 +3117,7 @@ def create_purchase(imported: dict = None):
 
         bind();
         recalc();
-      </script>
+      </script>{_create_picture_script(pic_offers)}
 
       <footer><p>{B.COMPANY_NAME} · {B.APP_SUBTITLE} · purchase order</p></footer>
     </main></body></html>"""
@@ -4553,7 +4651,7 @@ def _edit_sources(po: dict) -> list:
 
 def _edit_row_html(*, k="", pick="", hdr=False, lid="", name="", part="",
                    make="", hsn="", qty="", unit="", rate="", disc="",
-                   amount="") -> str:
+                   amount="", pic="") -> str:
     """
     One row of the full editor. Every row posts every list (`line_k`,
     `line_pick`, `line_hdr`, `line_name`, …) so the lists stay aligned by
@@ -4593,7 +4691,7 @@ def _edit_row_html(*, k="", pick="", hdr=False, lid="", name="", part="",
             <input type="text" name="line_name" value="{P.esc(name)}" data-lid="{P.esc(lid)}"
                    maxlength="{LINE_NAME_MAX}" placeholder="Description"/>
             <input type="text" name="line_part" value="{P.esc(part)}"
-                   maxlength="{LINE_PART_MAX}" placeholder="Part / item no"/></span>
+                   maxlength="{LINE_PART_MAX}" placeholder="Part / item no"/>{pic}</span>
           <input type="text" name="line_make" value="{P.esc(make)}"
                  maxlength="{BP.MAKE_MAX}" placeholder="Make"/>
           <input type="text" name="line_hsn" value="{P.esc(hsn)}"
@@ -4618,6 +4716,23 @@ def _qty_text(v) -> str:
         return str(v or "")
 
 
+def _edit_pic(row: dict, k, posted=None) -> str:
+    """
+    A stored line's picture select on the full editor (23 November 2026,
+    §0 **eighty-eighth** block) — `lineimage.select_html()`, the Product
+    Inquiry's own control, named by the line's STORED position
+    (`line_image_<k>`) so it never shifts the positional lists. `""` — and
+    the row byte-for-byte as before — when the item has nothing in the
+    library and the line carries no picture. `posted` redraws a refused POST
+    at the operator's choice.
+    """
+    probe = dict(row)
+    if posted is not None:
+        LI.apply_choice(probe, posted, row)
+    return LI.select_html(probe, f"line_image_{k}",
+                          style="font-size:.8rem;margin-top:.2rem;")
+
+
 def _stored_edit_rows(po: dict) -> str:
     out = ""
     for k, row in enumerate(po.get("line_items") or []):
@@ -4635,12 +4750,13 @@ def _stored_edit_rows(po: dict) -> str:
             rate=f"{float(row.get('price') or 0.0):.2f}",
             disc=(f"{float(row.get('discount_pct') or 0.0):g}"
                   if row.get("discount_pct") else ""),
-            amount=_inr(row.get("total") or 0))
+            amount=_inr(row.get("total") or 0), pic=_edit_pic(row, k))
     return out
 
 
-def _posted_edit_rows(form) -> str:
+def _posted_edit_rows(form, po: dict = None) -> str:
     g = form.getlist
+    stored = list((po or {}).get("line_items") or [])
     k, pick, hdr = g("line_k"), g("line_pick"), g("line_hdr")
     cols = {c: g(c) for c in ("line_name", "line_part", "line_make", "line_hsn",
                               "line_qty", "line_unit", "line_rate", "line_discount")}
@@ -4656,8 +4772,20 @@ def _posted_edit_rows(form) -> str:
             name=at(cols["line_name"], n), part=at(cols["line_part"], n),
             make=at(cols["line_make"], n), hsn=at(cols["line_hsn"], n),
             qty=at(cols["line_qty"], n), unit=at(cols["line_unit"], n),
-            rate=at(cols["line_rate"], n), disc=at(cols["line_discount"], n))
+            rate=at(cols["line_rate"], n), disc=at(cols["line_discount"], n),
+            pic=_posted_pic(form, at(k, n), stored))
     return out
+
+
+def _posted_pic(form, raw_k, stored: list) -> str:
+    raw_k = str(raw_k or "").strip()
+    if not (raw_k.isdigit() and int(raw_k) < len(stored)):
+        return ""
+    row = stored[int(raw_k)]
+    if row.get("is_header"):
+        return ""
+    field = f"line_image_{raw_k}"
+    return _edit_pic(row, raw_k, form.get(field) if field in form else None)
 
 
 def parse_edit_lines(form, po: dict) -> tuple:
@@ -4774,6 +4902,12 @@ def parse_edit_lines(form, po: dict) -> tuple:
             base["make"] = make
         else:
             base.pop("make", None)
+        # The picture select (§0 eighty-eighth block) — only on a STORED line,
+        # named by its stored position. `apply_choice()` accepts only an id
+        # the library offers this item or the one the line already carries.
+        field = f"line_image_{raw_k}"
+        if raw_k.isdigit() and field in form:
+            LI.apply_choice(base, form.get(field), base)
         items.append(base)
     return items, ""
 
@@ -5026,7 +5160,7 @@ def _edit_form_page(po: dict, id: str, *, error: str = "", may_number: bool,
     v_igst = _v("igst_rate", f"{float(tax_info.get('igst_rate') or 18):g}")
 
     if is_post:
-        rows_html = _posted_edit_rows(f)
+        rows_html = _posted_edit_rows(f, po)
         charge_section = _charge_section_html(
             charges_of(po), f.getlist("charge_label"), f.getlist("charge_amount"), f)
         extra_section = _extra_section_html(extra_lines_of(po), posted=f)

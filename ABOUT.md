@@ -12417,6 +12417,36 @@ a line. Every save path goes through it: `boqpick.picked_lines(with_image=)`,
 Held by [tests/test_line_image_library.py](tests/test_line_image_library.py)
 (40) and the escaping sweep.
 
+
+#### On EVERY purchase-order form — `/purchase/create` and `/purchase/edit` (23 November 2026, §0 eighty-eighth block)
+
+Asked 28 October: the real PO gets the Product Inquiry's picture feature on
+every create form and on its edit form. Until then the library select was on
+`/purchase/from-boq` and `/purchase/from-draft` only.
+
+* **`/purchase/create`** (and Import from Excel, which renders it): each
+  row's item cell gains a `line_image` select **only when the library
+  offers something for an item on the dropdown** (`_create_picture_offers()`
+  — every option resolved to the line it becomes and asked
+  `lineimage.library_for()`, `{}` while the library is empty). The page's
+  script (`_create_picture_script()`, after the main script because it wraps
+  `fillRate()`) refills it when the item changes and opens it at the item's
+  newest picture; hidden while the item has none. `_parse_lines()` reads it
+  positionally and keeps only what `apply_choice()` accepts for that item.
+* **`/purchase/edit/<id>`**: a stored line gets `lineimage.select_html()` —
+  the Product Inquiry's own control — named `line_image_<stored index>`, so
+  the positional lists never shift; `""` (the row byte-for-byte as before)
+  when the item has nothing in the library and the line carries no picture.
+  A refused POST redraws the operator's choice. New rows added on the editor
+  get their picture after the save, from the same select or the Pictures
+  page.
+* **Upload** stays on the order's own **Pictures** page
+  (`/purchase/pictures/<id>`), which registers a new picture into the
+  library under its name — the Product Inquiry's arrangement, for the
+  nginx-413 reason above. The NAME prints under the picture on the PO print
+  through `lineimage.cell()`, exactly as on the PI; a PO with no pictures
+  prints byte-for-byte as before (no golden moved).
+
 ### HSN / SAC — fill a blank code · [hsnfill.py](hsnfill.py) · `/boq/hsn` · `/proforma/hsn` · `/invoice/hsn` · `/ra/hsn`
 
 29 October 2026, CLIENT_CHANGES.md §0 **fifty-ninth** block, A1. Manas's

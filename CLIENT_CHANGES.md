@@ -7798,6 +7798,48 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 23 November 2026, client-fix brief (asked 28 October 2026) — PICTURES ON THE REAL PURCHASE ORDER AT CREATION AND EDIT · NO CHARGE
+>
+> **A new block, not an amendment.** The **eighty-eighth** occasion, on
+> `antigravity-dev`. Item 5 of the 23 November brief. Recorded
+> **"authorised, no charge"**.
+>
+> **What prompted it.** The picture picker was only on `/purchase/from-boq`
+> and `/purchase/from-draft`; a PO raised from scratch, or edited, could not
+> take one at creation.
+>
+> **What was built.** `/purchase/create` (and so Import from Excel, which
+> renders it) and `/purchase/edit/<id>` carry the Product Inquiry's picture
+> control: optional, picked from the named reusable library, opening at the
+> item's newest picture (the same item reuses the same picture), the name
+> snapshotted on the line and printed under the picture. The PO print shows
+> pictures the way the PI print does (`lineimage.cell()`); a PO with no
+> pictures prints byte-identical — no golden moved. No route, permission or
+> collection added.
+>
+> **Judgement calls, declared:**
+> 1. **"Upload or pick" is read as the Product Inquiry has it**: the form
+>    PICKS from the library; a new picture is UPLOADED on the order's own
+>    Pictures page (`/purchase/pictures/<id>`, which already existed), which
+>    registers it into the library under its name. No file box was put on a
+>    create form — the forty-ninth and fifty-ninth blocks' measured reason
+>    (nginx's own 413 at 8 MB; a refused save empties every file box) still
+>    holds.
+> 2. **The control appears only when the library offers something** for an
+>    item on the form (or the line already carries a picture), so with an
+>    empty library both forms are byte-for-byte what they were.
+> 3. **On `/purchase/create` the select follows the picked item by script**
+>    (the item is chosen in the browser); the server re-checks every id with
+>    `apply_choice()` against the line's own identity, so the script decides
+>    nothing. Verified in headless Chromium by hand, not by the suite.
+> 4. **On the edit form only STORED lines carry the select** (named by
+>    their stored position); a line added on the editor takes its picture
+>    after the save.
+>
+> **Tests.** `tests/test_po_create_pictures.py` (5).
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
