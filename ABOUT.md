@@ -10685,6 +10685,41 @@ refuses without — on the upload page, and again on the preview with each line
 marked ✓ with its column letter or ✗ *not chosen yet*. Nothing else about the
 BOQ import moved. See `/import` below.
 
+#### Importer fixes — Summary tabs, the banner, date titles (23 November 2026)
+
+Three fixes on prod, nothing stored changed shape and no stored BOQ was
+renamed:
+
+- **A ticked tab with no Quantity column is SKIPPED, not a blocker.** A
+  "Summary" tab used to stop the whole import with *Choose the column that
+  holds the Quantity*. Now `sheetimport.split_qty_tabs()` divides the ticked
+  tabs by whether their mapping takes a `qty` column; the import is built from
+  the tabs that do (`boqimport._importable()`), and the preview and the form
+  banner say `Skipped sheet 'Summary': no quantity column found.` per tab
+  (`sheetimport.skipped_sheet_text()`). A skipped tab keeps its column picker,
+  so mapping a quantity on it brings it back. **When no ticked tab has one**,
+  confirm is refused and the refusal opens with
+  `sheetimport.NO_QTY_ANYWHERE` (*"No sheet has a quantity column. …"*),
+  every tab's own problems after it. A skipped tab's other problems are not
+  asked, its layout is not remembered, and its columns are not read by the
+  cost-mode or rate-basis refusals. **The work order's importer
+  (`/wo/import`, `workorder.py`) shares the rule**; `/import`
+  (`docimport.py`) reads one sheet at a time and has no tabs to skip, so it
+  did not change. One tab with a quantity is byte-for-byte as before.
+- **The banner** on the prefilled form opens *Preview ready.* — the bold
+  *Nothing has been saved* read like a failure. BOQ: *Preview ready. Fill in
+  the project and customer, then press Create BOQ.*; `/import`: *Preview
+  ready. Check the form, then press <Save label>.* Nothing is saved until the
+  document's own Save, exactly as before. The `/boq/create?demo=1` banner and
+  `raboth.py`'s error (a genuine refusal) keep their words.
+- **A date line is never the project title.** `sheetimport.detect_names()`'s
+  merged-title fallback skips a line that opens with a date label (Date,
+  Dated, Dt.) or is mainly a date (`sheetimport.is_date_line()`), and falls
+  through to the next candidate; none left, the tab-name fallback applies as
+  before.
+
+`tests/test_import_fixes_20261123.py` holds all three.
+
 ---
 
 ### `/import` — Import from Excel, every other document · [docimport.py](docimport.py)

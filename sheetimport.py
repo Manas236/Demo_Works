@@ -1237,6 +1237,32 @@ def mapping_problems(grid: dict, mapping: dict) -> list:
     return probs
 
 
+# A ticked sheet with NO quantity column (23 November 2026). A "Summary" tab
+# — section totals, no quantities — used to block the whole import with
+# "Choose the column that holds the Quantity". It is now SKIPPED, said in one
+# line, and the import goes on with the sheets that have one. Only when NO
+# ticked sheet has a quantity column is the import refused, and the refusal
+# says exactly that. Shared by the BOQ importer (`boqimport.py`) and the work
+# order's (`workorder.py`); a skipped sheet keeps its column picker, so the
+# operator can still map a quantity on it and bring it back.
+NO_QTY_ANYWHERE = ("No sheet has a quantity column. Choose the column that "
+                   "holds the Quantity on at least one ticked sheet.")
+
+
+def skipped_sheet_text(name: str) -> str:
+    """The preview's one line for a sheet left out for want of a quantity."""
+    return f"Skipped sheet '{name}': no quantity column found."
+
+
+def split_qty_tabs(tabs, mapping_of) -> tuple:
+    """`(with_qty, without)` — the tabs, in the order given, split by whether
+    `mapping_of(tab)` maps any column to the quantity."""
+    with_qty, without = [], []
+    for i in tabs:
+        (with_qty if "qty" in (mapping_of(i) or {}).values() else without).append(i)
+    return with_qty, without
+
+
 # =============================================================================
 # 6. THE ROWS — lines, headers, sections, totals, flags
 # =============================================================================
@@ -3075,6 +3101,30 @@ _GENERIC_TITLE = re.compile(r"\b(?:bill\s+of\s+quantit(?:y|ies)|b\.?\s*o\.?\s*q\
                             r"abstract|annexure|rate\s+schedule)\b|[^a-z]", re.I)
 
 
+# A DATE LINE is never the title (23 November 2026). "DATE: 21.02.2024" sat
+# alone on its row above the heading and was taken as the project. A line
+# that OPENS with a date label (Date, Dated, Dt.) or is MAINLY a date (what
+# is left once the date is taken out is under three letters) is skipped, and
+# the picker falls through to the next candidate — or to none.
+_DATE_LABEL = re.compile(r"^\s*(?:dated?|dt)(?=[\s.:\-–—]|\d|$)", re.I)
+_DATE_TOKEN = re.compile(
+    r"\b\d{1,4}\s*[./\-]\s*\d{1,2}\s*[./\-]\s*\d{2,4}\b"
+    r"|\b\d{1,2}(?:st|nd|rd|th)?\s*[\-\s,]?\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|"
+    r"nov|dec)[a-z]*\.?\s*[\-\s,]?\s*\d{2,4}\b"
+    r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}"
+    r"(?:st|nd|rd|th)?\s*,?\s*\d{2,4}\b", re.I)
+
+
+def is_date_line(text: str) -> bool:
+    """True when `text` starts with a date label or is mainly a date."""
+    t = str(text or "")
+    if _DATE_LABEL.match(t):
+        return True
+    if not _DATE_TOKEN.search(t):
+        return False
+    return len(re.sub(r"[^a-z]", "", _DATE_TOKEN.sub("", t), flags=re.I)) < 3
+
+
 def _texts(vals: list) -> list:
     """`[(column index, text)]` of a row's non-empty text cells, in order."""
     return [(ci, str(v).strip()) for ci, v in enumerate(vals)
@@ -3142,7 +3192,8 @@ def detect_names(grid: dict) -> dict:
         if title is None and len(cells) == 1:
             text = cells[0][1]
             if (len(_GENERIC_TITLE.sub("", text)) >= 3 and not _CLIENT_LABEL.match(text)
-                    and not _MS_PREFIX.match(text) and not _PROJECT_LABEL.match(text)):
+                    and not _MS_PREFIX.match(text) and not _PROJECT_LABEL.match(text)
+                    and not is_date_line(text)):
                 title = {"text": text, "row": rnum, "how": "title"}
     if out["project"] is None and title is not None:
         out["project"] = title

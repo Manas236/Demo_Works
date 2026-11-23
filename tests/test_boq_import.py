@@ -929,7 +929,7 @@ def test_the_plain_create_form_carries_no_import_banner_or_action(client):
 def test_the_prefilled_form_posts_to_boq_create(client):
     _tok, body = confirm_to_form(client, xlsx([HEAD, ["1", "x", 1, "Nos", 1, None]]))
     assert '<form method="POST" action="/boq/create" onsubmit="return saveJSON()">' in body
-    assert "Nothing has been saved" in body
+    assert "<b>Preview ready.</b>" in body  # was "Nothing has been saved" (wording, 23 Nov 2026)
 
 
 def _save(client, model, **over):

@@ -2974,13 +2974,44 @@ def _tab_name(rec: dict, i: int) -> str:
         return f"Sheet {i + 1}"
 
 
+def _qty_split(rec: dict) -> tuple:
+    """`(with_qty, without)` over the ticked tabs (23 November 2026): a tab
+    with no Quantity column is SKIPPED, never a blocker — the BOQ importer's
+    rule, `sheetimport.split_qty_tabs()`."""
+    return SI.split_qty_tabs(_ticked(rec), lambda i: _mapping_of(rec, i))
+
+
+def _importable(rec: dict) -> list:
+    """The ticked tabs the lines are built from: those with a quantity
+    column; every ticked tab when none has one (the confirm is refused)."""
+    with_qty, _without = _qty_split(rec)
+    return with_qty or _ticked(rec)
+
+
+def _skipped_html(rec: dict) -> str:
+    """One `<li>` per ticked tab skipped for want of a quantity column."""
+    with_qty, without = _qty_split(rec)
+    if not with_qty:
+        return ""
+    return "".join(f"<li>{P.esc(SI.skipped_sheet_text(_tab_name(rec, i)))}</li>"
+                   for i in without)
+
+
 def _tab_problems(rec: dict) -> list:
-    """`mapping_problems()` per ticked tab (R4), each naming its tab."""
+    """`mapping_problems()` per ticked tab (R4), each naming its tab.
+
+    ⚠ From 23 November 2026 a tab with no Quantity column is skipped and its
+      problems are not asked; when NO ticked tab has one, the refusal opens
+      with `sheetimport.NO_QTY_ANYWHERE` and every tab's problems follow."""
     probs = []
     tabs = _ticked(rec)
     if not tabs:
         probs.append("Tick at least one tab to import.")
-    for i in tabs:
+        return probs
+    with_qty, _without = _qty_split(rec)
+    if not with_qty:
+        probs.append(SI.NO_QTY_ANYWHERE)
+    for i in (with_qty or tabs):
         for p in mapping_problems(_tab_grid(rec, i), _mapping_of(rec, i)):
             probs.append(f"{_tab_name(rec, i)}: {p}")
     return probs
@@ -2993,7 +3024,7 @@ def build_import(rec: dict) -> tuple:
     `import_tracks()` over the ticked tabs' mappings (R1), and every tab is
     built for those same tracks.
     """
-    tabs = _ticked(rec)
+    tabs = _importable(rec)                  # a tab with no quantity: skipped
     maps = {i: _mapping_of(rec, i) for i in tabs}
     tracks = import_tracks(list(maps.values()))
     rows, left_out, totals = [], [], ""
@@ -3090,7 +3121,7 @@ def _preview_page(token: str, rec: dict, problems=None, error: str = "") -> str:
                       for c, t in mapping.items()}
             rows_from_build(SI.build(grid, si_map, guided=True), mapping,
                             item_column_values(grid, mapping),
-                            tracks=import_tracks([_mapping_of(rec, j) for j in tabs]),
+                            tracks=import_tracks([_mapping_of(rec, j) for j in _importable(rec)]),
                             tab_name=_tab_name(rec, i), left_out=lo)
             left = (f'<ul style="margin:.4rem 0 0 1.1rem;font-size:.82rem;">'
                     f'{_left_out_html(lo)}</ul>' if lo else "")
@@ -3116,6 +3147,9 @@ def _preview_page(token: str, rec: dict, problems=None, error: str = "") -> str:
     if problems:
         probs = ('<div class="alert alert-error">&#10007; Not yet:<ul style="margin:.4rem 0 0 1.2rem;">'
                  + "".join(f"<li>{P.esc(p)}</li>" for p in problems) + "</ul></div>")
+    skipped = _skipped_html(rec)
+    if skipped:
+        probs += f'<ul class="imp-flags">{skipped}</ul>'
 
     body = f"""
   <div class="page-top">
@@ -3238,7 +3272,7 @@ def import_preview(token: str):
 
     # Consumed — `boqimport.form()`'s rule: the row goes when the form renders.
     staged().pop(token, None)
-    mapped = {t for i in _ticked(rec) for t in _mapping_of(rec, i).values()}
+    mapped = {t for i in _importable(rec) for t in _mapping_of(rec, i).values()}
     one = ""
     if tracks != "both":
         one = (f"<li><b>The ticked tabs carry one rate &mdash; this work order "
@@ -3251,12 +3285,12 @@ def import_preview(token: str):
     n_head = sum(1 for r in rows if r.get("is_header"))
     n_line = len(rows) - n_head
     heads = (f" and {n_head} heading{'' if n_head == 1 else 's'}" if n_head else "")
-    tabs_word = ", ".join(P.esc(_tab_name(rec, i)) for i in _ticked(rec))
+    tabs_word = ", ".join(P.esc(_tab_name(rec, i)) for i in _importable(rec))
     banner = f"""
   <div class="wo-banner">
     <b>Imported from {P.esc(rec.get("filename"))}</b> ({tabs_word}) &mdash; {n_line} line{"" if n_line == 1 else "s"}{heads},
     nothing saved yet. Check every line, then press <b>Raise work order</b>.
-    <ul>{one}{_left_out_html(left_out)}{totals_html}
+    <ul>{one}{_skipped_html(rec)}{_left_out_html(left_out)}{totals_html}
       <li>{n_need} field{"" if n_need == 1 else "s"} marked in red must be answered before the save.</li>
     </ul>
   </div>"""

@@ -33,7 +33,7 @@ def test_onto_the_edit_form_the_rows_are_appended_and_nothing_is_saved(client):
     before = json.dumps(pi, sort_keys=True)
     tok = staged("proforma", ROWS, ctx={"pi": "pe1"})
     page = applied(client, "proforma", tok).get_data(as_text=True)
-    assert "Nothing has been saved" in page and "Flange 50 NB" in page
+    assert "<b>Preview ready.</b>" in page and "Flange 50 NB" in page  # wording, 23 Nov 2026
     assert json.dumps(STORE["proformas"]["pe1"], sort_keys=True) == before
     # The editor's rows: the two stored lines first, then the two imported.
     rows = LE.rows_for_form(pi["line_items"], 18.0) + LE.imported_rows(

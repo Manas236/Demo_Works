@@ -320,14 +320,48 @@ def _mapping_of(rec: dict, i: int) -> dict:
     return dict(m) if isinstance(m, dict) else _default_mapping(rec, i)
 
 
+def _qty_split(rec: dict) -> tuple:
+    """`(with_qty, without)` over the ticked tabs (23 November 2026): a tab
+    whose mapping takes no Quantity column is SKIPPED, never a blocker —
+    `sheetimport.split_qty_tabs()`, the rule the work order shares."""
+    return SI.split_qty_tabs(
+        _ticked(rec), lambda i: SI.clean_mapping(_tab_grid(rec, i), _mapping_of(rec, i)))
+
+
+def _importable(rec: dict) -> list:
+    """The ticked tabs the import is BUILT from: those with a quantity column.
+    When none has one, every ticked tab — the page still shows what was read,
+    and `_tab_problems()` refuses the confirm."""
+    with_qty, _without = _qty_split(rec)
+    return with_qty or _ticked(rec)
+
+
+def skipped_tabs(rec: dict) -> list:
+    """The names of the ticked tabs left out for want of a quantity column —
+    [] when no tab has one (that is a refusal, not a skip)."""
+    with_qty, without = _qty_split(rec)
+    return [_tab_name(rec, i) for i in without] if with_qty else []
+
+
+def _skipped_html(rec: dict) -> str:
+    """One plain line per skipped tab, for the preview and the form banner."""
+    return "".join(f'<p class="imp-note" style="margin:.4rem 0 0;">&#9432; '
+                   f'{P.esc(SI.skipped_sheet_text(n))}</p>' for n in skipped_tabs(rec))
+
+
 def _tab_problems(rec: dict) -> list:
     """`mapping_problems()` for every ticked tab — named by tab when there
-    are several, exactly as before when there is one."""
+    are several, exactly as before when there is one.
+
+    ⚠ From 23 November 2026 a tab with no Quantity column is skipped, so its
+      problems are not asked; when NO ticked tab has one, the refusal opens
+      with `sheetimport.NO_QTY_ANYWHERE` and every tab's problems follow."""
     tabs = _ticked(rec)
     if not tabs:
         return ["Tick at least one tab to import."]
-    probs = []
-    for i in tabs:
+    with_qty, _without = _qty_split(rec)
+    probs = [] if with_qty else [SI.NO_QTY_ANYWHERE]
+    for i in (with_qty or tabs):
         grid = _tab_grid(rec, i)
         for p in SI.mapping_problems(grid, SI.clean_mapping(grid, _mapping_of(rec, i))):
             probs.append(f"{_tab_name(rec, i)}: {p}" if len(tabs) > 1 else p)
@@ -338,7 +372,7 @@ def _all_mappings(rec: dict) -> dict:
     """Every ticked tab's targets in one dict — what the cost-mode refusal
     reads (a base or escalation column on ANY tab is refused in cost mode)."""
     out = {}
-    for i in _ticked(rec):
+    for i in _importable(rec):
         for c, t in _mapping_of(rec, i).items():
             out[f"{i}:{c}"] = t
     return out
@@ -367,7 +401,9 @@ def build_tabs(rec: dict) -> dict:
       and `totals`, the COMBINED figure: the sums of the tabs' computed and
       sheet figures, judged within the same rupee.
     """
-    tabs = _ticked(rec)
+    # ⚠ The tabs WITH a quantity column (23 November 2026) — a skipped tab is
+    #   never built; `skipped_tabs()` names it on the page.
+    tabs = _importable(rec)
     built = []
     for i in tabs:
         grid = _tab_grid(rec, i)
@@ -2025,6 +2061,7 @@ def _preview_page(token: str, rec: dict, error: str = "", problems=None) -> str:
                   '<div style="font-weight:700;margin-bottom:.3rem;">&#10007; '
                   'Before this can open as a BOQ:</div><ul style="margin:0 0 0 1.1rem;">'
                   + "".join(f"<li>{P.esc(p)}</li>" for p in problems) + "</ul></div>")
+    alert += _skipped_html(rec)
 
     # The tabs (R5): every staged one with a tick; the reader's pick ticked.
     tick_html = []
@@ -2171,7 +2208,7 @@ def _banner(token: str, rec: dict, result: dict, model: dict,
     October 2026 it names every ticked tab (R5) and says which names the
     sheet filled in (R4)."""
     c = result["counts"]
-    tabs = _ticked(rec)
+    tabs = _importable(rec)
     cost = ""
     if markup is not None:
         cost = (f'<p style="margin:.4rem 0 0;"><b>Imported from a cost sheet:</b> base rate = '
@@ -2204,6 +2241,10 @@ def _banner(token: str, rec: dict, result: dict, model: dict,
     if len(tabs) > 1:
         where = ("tabs " + ", ".join(f"“{P.esc(_tab_name(rec, i))}”" for i in tabs)
                  + " (one section each)")
+    elif skipped_tabs(rec):
+        # The one tab built is not necessarily the primary one when a
+        # Summary tab beside it was skipped (23 November 2026).
+        where = f"sheet “{P.esc(_tab_name(rec, tabs[0]))}”"
     else:
         where = f"sheet “{P.esc(_sheet(rec).get('name'))}”"
     return (f'<div class="{cls}">&#128229; Imported from <b>{P.esc(rec.get("filename"))}</b>, '
@@ -2212,10 +2253,10 @@ def _banner(token: str, rec: dict, result: dict, model: dict,
             f'{len(result["sections"])} section'
             f'{"s" if len(result["sections"]) != 1 else ""}; {c["totals_dropped"]} total '
             f'row{"s" if c["totals_dropped"] != 1 else ""} checked and left out. '
-            f'<b>Nothing has been saved.</b> Check the lines, fill in the project and '
-            f'customer, then press Create BOQ &mdash; or just leave the page.'
+            f'<b>Preview ready.</b> Fill in the project and customer, then press '
+            f'Create BOQ.'
             f'<div style="margin:.4rem 0 0;">{totals_block(result)}</div>'
-            f'{cost}{rate_for_html}{known}{names}{flags}</div>')
+            f'{_skipped_html(rec)}{cost}{rate_for_html}{known}{names}{flags}</div>')
 
 
 # =============================================================================
@@ -2380,7 +2421,7 @@ def preview(token: str):
     refusal = too_large(editor_model(build_tabs(rec), markup=markup, rate_for=rec["rate_for"]))
     if refusal:
         return _preview_page(token, rec, error=refusal)
-    for i in _ticked(rec):
+    for i in _importable(rec):
         # Each tab's picks are remembered under its own header signature.
         _upsert_layout(_tab_grid(rec, i), _mapping_of(rec, i), mode, rec["rate_for"])
     rec["layout"] = SI.signature(grid)
@@ -2422,7 +2463,7 @@ def form(token: str):
     prefill = prefill_of(rec)
     # The BOQ's rate basis, from the choice — the form's select, prefilled.
     prefill[BQ.RATE_BASIS_KEY] = RATE_FOR_BASIS[rate_for]
-    unit_mapped = any("unit" in _mapping_of(rec, i).values() for i in _ticked(rec))
+    unit_mapped = any("unit" in _mapping_of(rec, i).values() for i in _importable(rec))
     # IMPORT_STYLES rides with the banner: /boq/create does not load it, so the
     # banner's own classes were unstyled there until 30 September 2026.
     html = BQ.create_boq(imported={"boot": model, "prefill": prefill,

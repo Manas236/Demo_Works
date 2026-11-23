@@ -2084,8 +2084,8 @@ def _banner(kind, rec, built) -> str:
             f'<div class="{cls}">&#128229; Imported from <b>{P.esc(rec.get("filename"))}</b>, '
             f'sheet “{P.esc(sheet.get("name"))}” &mdash; {int(built["rows"])} row'
             f'{"s" if built["rows"] != 1 else ""} read, {P.esc(stats)}. '
-            f'<b>Nothing has been saved.</b> Check the form, then press '
-            f'<b>{P.esc(kind.save_label)}</b> &mdash; or just leave the page. '
+            f'<b>Preview ready.</b> Check the form, then press '
+            f'<b>{P.esc(kind.save_label)}</b>. '
             f'<a href="{_url("preview", kind, token=rec["token"])}">Change the columns</a>'
             f'{fold}</div>')
 

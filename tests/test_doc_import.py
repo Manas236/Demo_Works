@@ -429,7 +429,7 @@ def test_the_parts_arrive_on_the_order_form_and_nothing_is_saved(client):
     assert 'action="/purchase/create"' in html
     assert 'value="Gate valve 100mm"' in html and 'value="1850.5"' in html
     assert 'value="84818090"' in html and 'value="5"' in html
-    assert "Nothing has been saved" in html
+    assert "<b>Preview ready.</b>" in html  # was "Nothing has been saved" (wording, 23 Nov 2026)
     assert STORE["purchases"] == before
 
 
