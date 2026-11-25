@@ -6,7 +6,7 @@
 > `auth.BUILTIN_ROLES`. Regenerate it after any change to a role:
 > `python tools/dump_access_matrix.py`.
 
-**7 roles · 93 permissions · 225 classified endpoints.**
+**7 roles · 93 permissions · 227 classified endpoints.**
 
 ---
 
@@ -367,7 +367,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `boq.view` | `boq.list_boqs`, `boq.view_boq` |
 | `boq.create` | `boq.create_boq`, `boq.edit_boq`, `boq.fill_hsn`, `boqimport.form`, `boqimport.preview`, `boqimport.upload` |
 | `boq.delete` | `boq.delete_boq` |
-| `boq.print` | `boq.print_boq` |
+| `boq.print` | `boq.print_boq`, `boq.set_print_orientation` |
 | `measurement.view` | `measurement.list_ms`, `measurement.view_ms` |
 | `measurement.create` | `docimport.apply_measurement`, `docimport.preview_measurement`, `docimport.upload_measurement`, `measurement.create_ms` |
 | `measurement.edit` | `measurement.edit_ms` |
@@ -390,7 +390,7 @@ Read off the live route registry, so it cannot drift from what the application a
 | `client.edit` | `client.edit_party` |
 | `quotation.view` | `quotation.list_quotations`, `quotation.view_quotation` |
 | `quotation.create` | `docimport.apply_quotation`, `docimport.preview_quotation`, `docimport.upload_quotation`, `quotation.create_quotation`, `quotation.edit_quotation` |
-| `quotation.edit` | `quotation.update_quotation` |
+| `quotation.edit` | `quotation.set_print_orientation`, `quotation.update_quotation` |
 | `quotation.delete` | `quotation.delete_quotation` |
 | `proforma.view` | `proforma.list_proformas`, `proforma.view_proforma` |
 | `proforma.create` | `docimport.apply_proforma`, `docimport.preview_proforma`, `docimport.upload_proforma`, `proforma.create_proforma`, `proforma.create_standalone`, `proforma.edit_proforma`, `proforma.fill_hsn`, `proforma.from_boq`, `proforma.pictures` |

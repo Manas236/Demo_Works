@@ -991,6 +991,10 @@ ROUTE_PERMISSIONS = {
     # BOQ's lines". It writes a tax code and nothing else; no permission minted.
     "boq.fill_hsn":               "boq.create",
     "boq.print_boq":              "boq.print",
+    # The Portrait / Landscape switch on the print (25 Nov 2026, §0 ninetieth
+    # block). A print preference stored on the BOQ: whoever may print it may
+    # choose how it prints. No permission minted.
+    "boq.set_print_orientation":  "boq.print",
     # Import BOQ from Excel (29 Sep 2026) — the SAME permission as
     # `boq.create_boq`, on all three, and no new permission minted: every one
     # of them ends at the Create BOQ form, and whoever may fill that form in by
@@ -1059,6 +1063,10 @@ ROUTE_PERMISSIONS = {
     # `quotation.create` (the tier that writes one), not `quotation.edit`,
     # which is the deal-fields update and was never a document edit.
     "quotation.edit_quotation":   "quotation.create",
+    # The Portrait / Landscape switch on the printed quotation (25 Nov 2026,
+    # §0 ninetieth block). `quotation.edit`, the tier that already writes a
+    # quotation's non-content fields; no permission minted.
+    "quotation.set_print_orientation": "quotation.edit",
     "proforma.list_proformas":    "proforma.view",
     "proforma.view_proforma":     "proforma.view",
     "proforma.create_proforma":   "proforma.create",

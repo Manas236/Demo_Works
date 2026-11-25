@@ -431,7 +431,10 @@ def test_every_col_is_widthed_by_class_not_inline(client, created):
                                                "cw-rate", "cw-amt", "cw-base", "cw-rate",
                                                "cw-amt"])):
         html = client.get(url).get_data(as_text=True)
-        cg = re.search(r"<colgroup>(.*?)</colgroup>", html, re.S).group(1)
+        # The first SECTION table's colgroup: from 25 Nov 2026 the print opens
+        # with the price summary cover, whose own table comes first.
+        cg = re.search(r'<table class="boq-table">\s*<colgroup>(.*?)</colgroup>',
+                       html, re.S).group(1)
         assert 'style="' not in cg, f"{url}: a <col> still carries an inline width"
         assert re.findall(r'<col class="(cw-[a-z]+)"/>', cg) == expect
 

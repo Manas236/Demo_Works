@@ -1976,10 +1976,17 @@ BOQ_SHEET_BLOCKS = [
 #     cell is now an empty `<div></div>`, kept so the signature stays right.
 #     No other block and no other document moved.
 # was c6c0a018c2549970 / 104850 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-BOQ_WHOLE, BOQ_LEN = "75d43fdb776f21ee", 109985   # was 5dae9565d6dc4b1a (fallback phone 8898606303, 23 Nov 2026), was 8f70178284b11c9f / 108635 (logo option A, 14 Nov 2026), was 3e0a982a430c5f42 / 108031 (logo top-aligned, 8 Nov 2026), was a90eaad2a053214d / 105803 (SF mark 1.5x, 29 Oct 2026)
-BOQ_BLOCKS = {"head":       "9769db14ee792650",   # was c945d7ee01ba87eb (page edge)
+# ⚠ RE-BASELINED 25 November 2026 (CLIENT_CHANGES.md §0 ninetieth block): the
+#   PRICE SUMMARY cover, an intended print change and declared. `head` (the
+#   Make / portrait / cover stylesheets and the Portrait / Landscape switch in
+#   the action bar) and `foot-strip` (the cover itself, first in the frame's
+#   body) moved; MEASURED: with `pricesummary.is_on` forced False only `head`
+#   differs, and `letterhead`, `doc-box`, `party`, `sections`, `grand` and
+#   `signature` are byte-identical on all three BOQ goldens. +3,795 bytes here.
+BOQ_WHOLE, BOQ_LEN = "d8e5e75a303d54d2", 113780   # was 75d43fdb776f21ee / 109985 (price summary cover, 25 Nov 2026, §0 90th block), was 5dae9565d6dc4b1a (fallback phone 8898606303, 23 Nov 2026), was 8f70178284b11c9f / 108635 (logo option A, 14 Nov 2026), was 3e0a982a430c5f42 / 108031 (logo top-aligned, 8 Nov 2026), was a90eaad2a053214d / 105803 (SF mark 1.5x, 29 Oct 2026)
+BOQ_BLOCKS = {"head":       "c3c145dda61967f8",   # was 9769db14ee792650 (price summary cover, 25 Nov 2026, §0 90th block), was c945d7ee01ba87eb (page edge)
               "letterhead": "cbc725305de55baf",   # was f25310b3030e63a4 (fallback phone 8898606303, 23 Nov 2026), was 26c0a97c6cee7e1b (logo option A, 14 Nov 2026), was 083715b1a45ee586 (logo top-aligned, 8 Nov 2026), was 4fcc7501ec466c23 (SF mark 1.5x, 29 Oct 2026), was 1c197f96af8ad872
-              "foot-strip": "0f66996df1483847",
+              "foot-strip": "74e16c3331d89caa",   # was 0f66996df1483847 (price summary cover, 25 Nov 2026, §0 90th block)
               "doc-box":    "64fcaef781b20ed2",
               "party":      "9b34f96c4ac7cd01",
               "sections":   "2e4d91620fb69579",
@@ -2443,10 +2450,10 @@ def golden_disc_boq(client, pinned_identity):
 #   other block hashes as before. Whole page was:
 #       DISC_BOQ_WHOLE, DISC_BOQ_LEN = "cd291621b7bdfa2b", 104758
 # was 9f059fe6700c2969 / 105723 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-DISC_BOQ_WHOLE, DISC_BOQ_LEN = "03c28a9bdbba93cf", 110858   # was 335fa0f926e8199d (fallback phone 8898606303, 23 Nov 2026), was 9e366d5a77533404 / 109508 (logo option A, 14 Nov 2026), was 994dcb5c26ef2c89 / 108904 (logo top-aligned, 8 Nov 2026), was 20a051eb01a77aa0 / 106676 (SF mark 1.5x, 29 Oct 2026)
-DISC_BOQ_BLOCKS = {"head":       "b9c71d2d51b5f084",   # was ad173a89e8583085 (page edge)
+DISC_BOQ_WHOLE, DISC_BOQ_LEN = "4c10ceb863b6df84", 114651   # was 03c28a9bdbba93cf / 110858 (price summary cover, 25 Nov 2026, §0 90th block), was 335fa0f926e8199d (fallback phone 8898606303, 23 Nov 2026), was 9e366d5a77533404 / 109508 (logo option A, 14 Nov 2026), was 994dcb5c26ef2c89 / 108904 (logo top-aligned, 8 Nov 2026), was 20a051eb01a77aa0 / 106676 (SF mark 1.5x, 29 Oct 2026)
+DISC_BOQ_BLOCKS = {"head":       "4f13ed5c6bd3b656",   # was b9c71d2d51b5f084 (price summary cover, 25 Nov 2026, §0 90th block), was ad173a89e8583085 (page edge)
                    "letterhead": "cbc725305de55baf",   # was f25310b3030e63a4 (fallback phone 8898606303, 23 Nov 2026), was 26c0a97c6cee7e1b (logo option A, 14 Nov 2026), was 083715b1a45ee586 (logo top-aligned, 8 Nov 2026), was 4fcc7501ec466c23 (SF mark 1.5x, 29 Oct 2026), was 1c197f96af8ad872 (banner, merge 23 Oct)
-                   "foot-strip": "31227c23efe62134",
+                   "foot-strip": "b3b989509a9eb496",   # was 31227c23efe62134 (price summary cover, 25 Nov 2026, §0 90th block)
                    "doc-box":    "64fcaef781b20ed2",
                    "party":      "4e2d2f79e29f69fb",
                    "sections":   "87cec2766c2ce91e",
@@ -2581,10 +2588,10 @@ def golden_asis_boq(client, pinned_identity):
 #   other block hashes as before. Whole page was:
 #       ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "5e0d8c5000e0fd5c", 107790
 # was 405e364eec391eaa / 108755 before the 26 Oct 2026 PAGE EDGE — see above GOLD_TI
-ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "f417ab2b58ef6b51", 113890   # was be2a36d8d3570941 (fallback phone 8898606303, 23 Nov 2026), was 09d67f86f0710dc8 / 112540 (logo option A, 14 Nov 2026), was f3d88938f2b6bb49 / 111936 (logo top-aligned, 8 Nov 2026), was 5dd540b043b2458b / 109708 (SF mark 1.5x, 29 Oct 2026)
-ASIS_BOQ_BLOCKS = {"head":       "5e92e0100f640d1f",   # was 777d7e8e392148fb (page edge)
+ASIS_BOQ_WHOLE, ASIS_BOQ_LEN = "5f2ba9a461730d6f", 117762   # was f417ab2b58ef6b51 / 113890 (price summary cover, 25 Nov 2026, §0 90th block), was be2a36d8d3570941 (fallback phone 8898606303, 23 Nov 2026), was 09d67f86f0710dc8 / 112540 (logo option A, 14 Nov 2026), was f3d88938f2b6bb49 / 111936 (logo top-aligned, 8 Nov 2026), was 5dd540b043b2458b / 109708 (SF mark 1.5x, 29 Oct 2026)
+ASIS_BOQ_BLOCKS = {"head":       "a1da25ec7e5f6984",   # was 5e92e0100f640d1f (price summary cover, 25 Nov 2026, §0 90th block), was 777d7e8e392148fb (page edge)
                    "letterhead": "cbc725305de55baf",   # was f25310b3030e63a4 (fallback phone 8898606303, 23 Nov 2026), was 26c0a97c6cee7e1b (logo option A, 14 Nov 2026), was 083715b1a45ee586 (logo top-aligned, 8 Nov 2026), was 4fcc7501ec466c23 (SF mark 1.5x, 29 Oct 2026), was 1c197f96af8ad872 (banner, merge 23 Oct)
-                   "foot-strip": "2a8f2f65687ae299",
+                   "foot-strip": "360f39a3458ce7dc",   # was 2a8f2f65687ae299 (price summary cover, 25 Nov 2026, §0 90th block)
                    "doc-box":    "64fcaef781b20ed2",
                    "party":      "9b5c06dd87a13664",
                    "sections":   "6b697d970b1fd5d9",

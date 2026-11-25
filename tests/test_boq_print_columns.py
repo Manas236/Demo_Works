@@ -180,8 +180,9 @@ def test_print_keeps_the_rate_and_amount_columns(printed):
     """What was agreed, and what it comes to, both stay on the issued sheet."""
     # Three sections, each with a supply and an installation rate column.
     assert printed.count("U/ Rate") == 6
-    assert printed.count("Supply Amount") == 3
-    assert printed.count("Installation Amount") == 3
+    # +1 each from 25 Nov 2026: the price summary cover's column heads.
+    assert printed.count("Supply Amount") == 3 + 1
+    assert printed.count("Installation Amount") == 3 + 1
     assert printed.count("BASIC VALUE SUBTOTAL") == 3
     assert "TOTAL BASIC VALUE" in printed
 

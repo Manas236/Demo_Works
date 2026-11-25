@@ -708,6 +708,26 @@ FORBIDDEN = [
                                      "db.py mirrors it"),
     ("series", "flask",       "any", "it owns no route and builds no HTML"),
 
+    # ── pricesummary.py — the PRICE SUMMARY cover is a LEAF (25 Nov 2026) ───
+    # CLIENT_CHANGES.md §0 ninetieth block. The printed BOQ and the printed
+    # quotation share its layout, its /settings record and its form widgets;
+    # each chain keeps its own arithmetic and hands the leaf finished figures.
+    # It imports `store` and `pipeline` only, so `boq.py` (which may not
+    # import `settings.py`) and `quotation.py` (inside its unfrozen
+    # functions) both reach it, and it reaches neither.
+    ("pricesummary", "boq",       "any", "the leaf is reached BY boq.py; it is fed "
+                                         "figures, it never computes them"),
+    ("pricesummary", "quotation", "any", "same, for the quotation chain"),
+    ("pricesummary", "settings",  "any", "settings.py owns the PAGE; the leaf owns "
+                                         "the record, series.py's arrangement"),
+    ("pricesummary", "docsheet",  "any", "docsheet imports quotation; the leaf must "
+                                         "stay reachable from inside quotation.py"),
+    ("pricesummary", "roundoff",  "any", "a round off is the chain's figure, "
+                                         "handed in already formatted"),
+    ("pricesummary", "flask",     "any", "it owns no route"),
+    ("quotation",    "pricesummary", "module", "frozen: reached only inside the "
+                                               "unfrozen functions"),
+
     # ── docnum.py — the MANUAL document number is a LEAF (27 October 2026) ─
     #
     # CLIENT_CHANGES.md §0's fifty-fourth block, item A. It holds the rule

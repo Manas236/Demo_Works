@@ -2116,6 +2116,42 @@ BOQ_DOC_SCRIPT = """
 </script>
 """
 
+# `/boq/print` ONLY (25 November 2026, §0 ninetieth block): the Make column's
+# width and the PORTRAIT re-layout. Constants of their own, never rules in
+# `BOQ_STYLES` (four page goldens hash it) or `BOQ_DOC_STYLES` (`/boq/view`
+# loads it too): `/boq/view` draws neither column nor page.
+BOQ_PRINT_STYLES = """
+<style>
+  .boq-table col.cw-make { width:22mm; }
+  .b-make { text-align:left; overflow-wrap:break-word; }
+  @media print and (orientation:portrait), screen and (max-width:760px) {
+    .boq-table col.cw-make { width:16mm; }
+  }
+</style>
+"""
+
+# The PORTRAIT print (R5/R6). Loaded after every other sheet, so its `@page`
+# size wins and its widths are the last word on both paper and screen. The
+# fixed columns of a split section with a Make column come to 128mm of A4
+# portrait's 190mm, leaving the description 62mm; without Make, 80mm.
+BOQ_PORTRAIT_STYLES = """
+<style>
+  @media print { @page { size:A4 portrait; } }
+  .boq-outer { max-width:210mm; }
+  .boq-portrait col.cw-sno  { width:9mm; }
+  .boq-portrait col.cw-make { width:18mm; }
+  .boq-portrait col.cw-qty  { width:12mm; }
+  .boq-portrait col.cw-unit { width:11mm; }
+  .boq-portrait col.cw-rate { width:17mm; }
+  .boq-portrait col.cw-amt  { width:22mm; }
+  .boq-portrait th, .boq-portrait td { padding:2px; }
+  .boq-portrait td.b-qty, .boq-portrait td.b-rate, .boq-portrait td.b-amt {
+    white-space:nowrap; }
+  .boq-portrait .b-sub { font-size:var(--fs-xs); color:var(--doc-soft);
+                         margin-top:1px; font-weight:400; }
+</style>
+"""
+
 # `/boq/view` ONLY (30 September 2026): its notes are screen furniture and
 # never print, even when the internal copy is printed from the browser. A
 # constant of its own, never a rule in `BOQ_STYLES` (four page goldens hash
@@ -2220,7 +2256,7 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
                    show_rate_breakup: bool = False, show_s_disc: bool = False,
                    show_i_disc: bool = False, screen_notes: bool = False,
                    show_supply: bool = True, show_install: bool = True,
-                   supply_name: str = "Supply") -> str:
+                   supply_name: str = "Supply", show_make: bool = False) -> str:
     """
     One section: its title band, its own column heads, its lines, its subtotal.
 
@@ -2262,6 +2298,12 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
       renames the supply track ("Supply + Installation (SITC)"). All three
       default to the split sheet, so a `split` BOQ is **byte-identical**: each
       piece below is the same string it always was unless a track is hidden.
+
+    ⚠ **`show_make` (25 November 2026, §0 ninetieth block)** adds a **Make**
+      column straight after Description, filled from the remark's own
+      `Make: X` part (`make_from_remark()`) and nothing else of the remark.
+      `/boq/print` passes it only on a BOQ where a line carries a make
+      (`any_make()`); every other caller and every other BOQ is unchanged.
     """
     code   = sec.get("code") or ""
     areas  = list(sec.get("areas") or [])
@@ -2309,6 +2351,9 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
     # restate them for a portrait page — an inline width cannot be overridden
     # by a media query.
     cols = ['<col class="cw-sno"/>', '<col class="cw-desc"/>']
+    if show_make:
+        cols += ['<col class="cw-make"/>']
+    mk = 1 if show_make else 0
     cols += ['<col class="cw-area"/>'] * len(areas)                 # one per area
     cols += ['<col class="cw-qty"/>', '<col class="cw-unit"/>']
     if show_supply:
@@ -2394,7 +2439,7 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
       <thead>
         <tr>
           <th class="b-sno"{rs}>Sr.</th>
-          <th class="b-desc"{rs}>Description</th>
+          <th class="b-desc"{rs}>Description</th>{f'<th class="b-make"{rs}>Make</th>' if show_make else ""}
           {area_group_th}
           <th class="b-qty"{rs}>Total Qty</th>
           <th class="b-unit"{rs}>Unit</th>
@@ -2426,7 +2471,8 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
             #   description itself + areas + qty + unit
             #   + supply([base][,esc],rate) + supply amount
             #   + install([base][,esc],rate) + install amount
-            span = 1 + len(areas) + 2 + n_supply_cols + s_amt_cols + n_install_cols + i_amt_cols
+            span = (1 + mk + len(areas) + 2 + n_supply_cols + s_amt_cols
+                    + n_install_cols + i_amt_cols)
             body += f"""
             <tr class="{row_cls}">
               <td class="b-sno">{P.esc(_item_no(li.get("item_no")))}</td>
@@ -2475,7 +2521,7 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
         body += f"""
         <tr class="{row_cls}">
           <td class="b-sno">{P.esc(_item_no(li.get("item_no")))}</td>
-          <td class="b-desc{child_cls}">{desc}</td>
+          <td class="b-desc{child_cls}">{desc}</td>{f'<td class="b-make">{P.esc(make_from_remark(li.get("remark")))}</td>' if show_make else ""}
           {area_tds}
           <td class="b-qty">{_qty_cell(li.get("total_qty"))}</td>
           <td class="b-unit">{P.esc(li.get("unit"))}</td>
@@ -2493,7 +2539,7 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
     sup, ins = section_totals(boq, code)
     # Label spans everything up to the supply amount, exactly as the client's
     # own sheet merges A:I for its "BASIC VALUE SUBTOTAL (A)" row.
-    sum_span = 2 + len(areas) + 2 + n_supply_cols
+    sum_span = 2 + mk + len(areas) + 2 + n_supply_cols
     if show_supply and show_install:
         sum_tail = f"""<td class="b-amt">{_inr(sup)}</td>
       <td colspan="{n_install_cols}"></td>
@@ -2502,7 +2548,7 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
         sum_tail = f'<td class="b-amt">{_inr(sup)}</td>'
     else:
         # Installation only: the label runs up to the installation amount.
-        sum_span = 2 + len(areas) + 2 + n_install_cols
+        sum_span = 2 + mk + len(areas) + 2 + n_install_cols
         sum_tail = f'<td class="b-amt">{_inr(ins)}</td>'
     body += f"""
     <tr class="row-secsum">
@@ -2525,6 +2571,145 @@ def _section_table(boq: dict, sec: dict, show_s_esc: bool, show_i_esc: bool,
       <div class="sec-wrap">
         <table class="boq-table">{colgroup}{head_html}<tbody>{body}</tbody></table>
       </div>{skip_html}
+    </div>"""
+
+
+def any_make(boq: dict) -> bool:
+    """Does any priced line's remark carry a `Make: X` (25 Nov 2026)? The
+    printed BOQ draws its Make column only then."""
+    return any(make_from_remark(li.get("remark"))
+               for li in boq.get("line_items") or []
+               if isinstance(li, dict) and not li.get("is_header"))
+
+
+def _area_subline(li: dict, areas: list, as_is: bool) -> str:
+    """The area / floor quantities as one small line under a description, for
+    the PORTRAIT sheet (25 Nov 2026): "Ground 10 · First 5". Exactly the
+    figures the landscape sheet prints in its area columns, by the same rule
+    (a blank is no figure; on an as-is record a typed 0 is 0)."""
+    area_qty = li.get("area_qty") or {}
+    parts = []
+    for a in areas:
+        v = area_qty.get(a)
+        shown = (_fmt_qty(v) if v is not None else "") if as_is else (_fmt_qty(v) if v else "")
+        if shown:
+            parts.append(f"{P.esc(a)} {shown}")
+    return " &middot; ".join(parts)
+
+
+def _section_table_portrait(boq: dict, sec: dict, show_supply: bool = True,
+                            show_install: bool = True, supply_name: str = "Supply",
+                            show_make: bool = False, show_s_disc: bool = False,
+                            show_i_disc: bool = False) -> str:
+    """
+    One section on an A4 PORTRAIT page (25 November 2026, §0 ninetieth block,
+    R6). A RE-LAYOUT, not the landscape table shrunk:
+
+        Sr. | Description | [Make] | Qty | Unit | Supply Rate | Supply Amount
+            | Installation Rate | Installation Amount
+
+    and every figure the landscape print shows is still on the page:
+
+    * the **area / floor quantities** become a small line under the
+      description (`_area_subline()`), never dropped;
+    * a track with a **discount** keeps its U/ Rate in the rate column and
+      prints "Disc 5% · Net 950.00" under the description, so the net rate
+      the amount is billed at is on the sheet;
+    * the rate basis hides a whole track exactly as on landscape.
+
+    The cells are the landscape cells' own helpers (`_rate_cell()`,
+    `_qty_cell()`, `_amt_cell()`), and the subtotal is the same
+    `section_totals()`, so the two orientations cannot print different money.
+    Print-only: `/boq/view` never draws this table.
+    """
+    code  = sec.get("code") or ""
+    areas = list(sec.get("areas") or [])
+    lines = _lines_of(boq, code)
+    as_is = is_as_is(boq)
+    sitc  = supply_name != "Supply"
+
+    cols = ['<col class="cw-sno"/>', '<col class="cw-desc"/>']
+    if show_make:
+        cols.append('<col class="cw-make"/>')
+    cols += ['<col class="cw-qty"/>', '<col class="cw-unit"/>']
+    if show_supply:
+        cols += ['<col class="cw-rate"/>', '<col class="cw-amt"/>']
+    if show_install:
+        cols += ['<col class="cw-rate"/>', '<col class="cw-amt"/>']
+    n_cols = len(cols)
+    colgroup = "<colgroup>" + "".join(cols) + "</colgroup>"
+
+    heads = ['<th class="b-sno">Sr. No.</th>', '<th class="b-desc">Description</th>']
+    if show_make:
+        heads.append('<th class="b-make">Make</th>')
+    heads += ['<th class="b-qty">Qty</th>', '<th class="b-unit">Unit</th>']
+    if show_supply:
+        heads += [f'<th class="b-rate">{"Supply Rate" if not sitc else supply_name + "<br/>U/ Rate"}</th>',
+                  f'<th class="b-amt">{"Supply Amount" if not sitc else "Amount (SITC)"}</th>']
+    if show_install:
+        heads += ['<th class="b-rate">Installation Rate</th>',
+                  '<th class="b-amt">Installation Amount</th>']
+    head_html = "<thead><tr>" + "".join(heads) + "</tr></thead>"
+
+    body = ""
+    for li in lines:
+        child_cls = " b-child" if (li.get("parent_item_no") or "").strip() else ""
+        desc = P.esc(li.get("description"))
+        sno = P.esc(_item_no(li.get("item_no")))
+        if li.get("is_header"):
+            body += (f'<tr class="row-spec"><td class="b-sno">{sno}</td>'
+                     f'<td class="b-desc{child_cls}" colspan="{n_cols - 1}">{desc}</td></tr>')
+            continue
+        subs = []
+        area_line = _area_subline(li, areas, as_is)
+        if area_line:
+            subs.append(area_line)
+        for on, track, lbl in ((show_supply and show_s_disc, "supply",
+                                "SITC" if sitc else "Supply"),
+                               (show_install and show_i_disc, "install", "Installation")):
+            if on:
+                d = _disc_cell(disc_of(li, track), as_is)
+                n = _rate_cell(net_rate(li, track), as_is)
+                bits = ([f"Disc {d}"] if d else []) + ([f"Net {n}"] if n else [])
+                if bits:
+                    subs.append(f"{lbl}: " + " &middot; ".join(bits))
+        sub_html = "".join(f'<div class="b-sub">{x}</div>' for x in subs)
+        cells = [f'<td class="b-sno">{sno}</td>',
+                 f'<td class="b-desc{child_cls}">{desc}{sub_html}</td>']
+        if show_make:
+            cells.append(f'<td class="b-make">{P.esc(make_from_remark(li.get("remark")))}</td>')
+        cells += [f'<td class="b-qty">{_qty_cell(li.get("total_qty"))}</td>',
+                  f'<td class="b-unit">{P.esc(li.get("unit"))}</td>']
+        if show_supply:
+            cells += [f'<td class="b-rate">{_rate_cell(li.get("supply_rate"), as_is)}</td>',
+                      f'<td class="b-amt">{_amt_cell(li.get("supply_amount"))}</td>']
+        if show_install:
+            cells += [f'<td class="b-rate">{_rate_cell(li.get("install_rate"), as_is)}</td>',
+                      f'<td class="b-amt">{_amt_cell(li.get("install_amount"))}</td>']
+        body += '<tr class="row-line">' + "".join(cells) + "</tr>"
+
+    sup, ins = section_totals(boq, code)
+    lead = 2 + (1 if show_make else 0) + 2
+    lbl = f"BASIC VALUE SUBTOTAL ({P.esc(code)}) &gt;&gt;&gt;&gt;"
+    if show_supply and show_install:
+        tail = (f'<td class="b-amt">{_inr(sup)}</td><td></td>'
+                f'<td class="b-amt">{_inr(ins)}</td>')
+        span = lead + 1
+    elif show_supply:
+        tail, span = f'<td class="b-amt">{_inr(sup)}</td>', lead + 1
+    else:
+        tail, span = f'<td class="b-amt">{_inr(ins)}</td>', lead + 1
+    body += (f'<tr class="row-secsum"><td class="secsum-lbl" colspan="{span}">'
+             f'{lbl}</td>{tail}</tr>')
+
+    return f"""
+    <div class="sec-block">
+      <div class="sec-head">
+        <span class="sec-code">{P.esc(code)}</span>{P.esc(sec.get("title"))}
+      </div>
+      <div class="sec-wrap">
+        <table class="boq-table boq-portrait">{colgroup}{head_html}<tbody>{body}</tbody></table>
+      </div>
     </div>"""
 
 
@@ -3146,7 +3331,8 @@ def list_boqs():
 
 
 def _document_html(boq: dict, show_rate_breakup: bool = False,
-                   screen_notes: bool = False) -> str:
+                   screen_notes: bool = False, cover: str = "",
+                   portrait: bool = False, show_make: bool = False) -> str:
     """
     The A4 sheet — letterhead, header block, section tables, totals, signature.
 
@@ -3163,6 +3349,13 @@ def _document_html(boq: dict, show_rate_breakup: bool = False,
     ⚠ `screen_notes` (6 October 2026, A4) — `/boq/view` only — adds the
       "excludes N lines with no amount" lines under each subtotal and the
       grand total that skipped any. Never on the print, which does not pass it.
+
+    ⚠ **`cover`, `portrait`, `show_make` (25 Nov 2026, §0 ninetieth block)** —
+      `/boq/print` only. `cover` is the PRICE SUMMARY page
+      (`_summary_cover()`), placed first in the frame's body so the repeating
+      letterhead heads it; `portrait` draws every section through
+      `_section_table_portrait()`; `show_make` adds the Make column. All three
+      default off, so `/boq/view` draws exactly the sheet it drew.
     """
     sup, ins, total = boq_totals(boq)
 
@@ -3193,10 +3386,19 @@ def _document_html(boq: dict, show_rate_breakup: bool = False,
         disc_flags["show_supply"] = False
     if basis == "sitc":
         disc_flags["supply_name"] = SITC_TRACK_LABEL
-    sections_html = "".join(
-        _section_table(boq, s, show_s_esc, show_i_esc, show_rate_breakup, **disc_flags)
-        for s in _sections_of(boq)
-    )
+    if show_make:
+        disc_flags["show_make"] = True
+    if portrait:
+        _pf = {k: v for k, v in disc_flags.items()
+               if k in ("show_supply", "show_install", "supply_name", "show_make",
+                        "show_s_disc", "show_i_disc")}
+        sections_html = "".join(_section_table_portrait(boq, s, **_pf)
+                                for s in _sections_of(boq))
+    else:
+        sections_html = "".join(
+            _section_table(boq, s, show_s_esc, show_i_esc, show_rate_breakup, **disc_flags)
+            for s in _sections_of(boq)
+        )
     skipped = lines_without_amount(boq) if screen_notes else 0
     grand_skip = (f'<div class="skip-note">Total {excludes_note(skipped)}</div>'
                   if skipped else "")
@@ -3352,7 +3554,7 @@ def _document_html(boq: dict, show_rate_breakup: bool = False,
     </td></tr></tfoot>
 
     <tbody><tr><td>
-
+{cover}
       <div class="doc-box">
         <div class="doc-title">BILL OF QUANTITIES</div>
         <div class="doc-sub-boq">
@@ -3391,6 +3593,56 @@ def _document_html(boq: dict, show_rate_breakup: bool = False,
 
 </div>
 </div>"""
+
+
+def _summary_cover(boq: dict) -> str:
+    """
+    The PRICE SUMMARY page for the printed BOQ (25 November 2026, §0 ninetieth
+    block) — `pricesummary.summary_html()` fed with THIS chain's own figures:
+    one row per section from `section_totals()`, the totals from
+    `boq_totals()` and the round off from `grand_of()`, the same three calls
+    the detail sheet prints from, so the cover matches the sheet to the paisa.
+
+    The columns follow the rate basis the sheet already prints: Supply and
+    Installation on `split`, ONE "Supply + Installation (SITC)" column on
+    `sitc`, one track on `supply_only` / `installation_only`. An empty
+    section prints 0.00, never hidden. The BOQ prints no tax
+    (`PRINT_TAX`), so the cover carries the /settings tax line. The terms are
+    the BOQ's OWN snapshot, never the live /settings list.
+    """
+    import pricesummary as PS
+    cfg = PS.settings_of()
+    basis = rate_basis_of(boq)
+    if basis == "sitc":
+        heads, pick = [SITC_TRACK_LABEL], (lambda a, b: [a])
+    elif basis == "supply_only":
+        heads, pick = ["Supply Amount"], (lambda a, b: [a])
+    elif basis == "installation_only":
+        heads, pick = ["Installation Amount"], (lambda a, b: [b])
+    else:
+        heads, pick = ["Supply Amount", "Installation Amount"], (lambda a, b: [a, b])
+    rows = []
+    for i, sec in enumerate(_sections_of(boq)):
+        sup, ins = section_totals(boq, sec.get("code"))
+        rows.append((str(sec.get("code") or "").strip() or PS.section_letter(i),
+                     str(sec.get("title") or ""), pick(_inr(sup), _inr(ins))))
+    sup, ins, total = boq_totals(boq)
+    totals = [("Total", pick(_inr(sup), _inr(ins)))]
+    blank = [None] * (len(heads) - 1)
+    if len(heads) > 1:
+        totals.append(("Total Basic Value", blank + [_inr(total)]))
+    _t, ro, rounded = grand_of(boq)
+    if abs(ro) >= 0.005:
+        totals += [("Round Off", blank + [RO.label(ro)]),
+                   ("Grand Total", blank + [_inr(rounded)])]
+    to_name = (str(boq.get("to") or "").strip().split("\n") or [""])[0].strip() \
+        or str(boq.get("account_name") or "").strip()
+    project = str(boq.get("project_name") or "").strip()
+    return PS.summary_html(
+        title=cfg["title"], to_name=to_name,
+        subject=(project + " Quotation") if project else "",
+        heads=heads, rows=rows, totals=totals,
+        tax_line=cfg["tax_line"], terms=PS.terms_of(boq))
 
 
 @boq_bp.route("/view/<id>")
@@ -3950,6 +4202,18 @@ def print_boq(id: str):
         return redirect(url_for("boq.list_boqs", msg="BOQ not found.", type="error"))
 
     import docsheet as _DS   # the page edge, as `view_boq()` takes it
+    import auth as _AUTH
+    import pricesummary as PS
+
+    # The PRICE SUMMARY cover and the ORIENTATION (25 Nov 2026, §0 ninetieth
+    # block). The BOQ's own default is landscape, the page it always printed,
+    # so a BOQ nobody touches prints the same detail layout as before.
+    orient   = PS.orientation_of(boq, PS.LANDSCAPE)
+    portrait = orient == PS.PORTRAIT
+    cover    = _summary_cover(boq) if PS.is_on(boq) else ""
+    switch   = PS.orientation_toolbar(
+        url_for("boq.set_print_orientation", id=id), orient,
+        _AUTH.can_reach("boq.set_print_orientation"))
 
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -3957,7 +4221,7 @@ def print_boq(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(str(boq.get('ref') or '') + " BOQ")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_DOC_STYLES}{_DS.PRINT_EDGE_STYLES}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{BOQ_STYLES}{BOQ_DOC_STYLES}{_DS.PRINT_EDGE_STYLES}{BOQ_PRINT_STYLES}{PS.SUMMARY_CSS if cover else ""}{BOQ_PORTRAIT_STYLES if portrait else ""}
   <style>
     @media print {{ .no-print {{ display:none !important; }} }}
   </style>
@@ -3973,14 +4237,34 @@ def print_boq(id: str):
   <div style="display:flex;gap:.7rem;flex-wrap:wrap;">
     <a href="{url_for('boq.view_boq', id=id)}" class="btn btn-ghost">&#8592; Back to BOQ</a>
     <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">All BOQs</a>
+    {switch}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
 
-{_document_html(boq, show_rate_breakup=False)}
+{_document_html(boq, show_rate_breakup=False, cover=cover, portrait=portrait,
+                show_make=any_make(boq))}
 
 </main></body></html>"""
     return _page(template)
+
+
+@boq_bp.route("/print/<id>/orientation", methods=["POST"])
+def set_print_orientation(id: str):
+    """
+    The Portrait / Landscape switch on `/boq/print` (25 Nov 2026, §0
+    ninetieth block, R5): stores `print_orientation` on the BOQ and goes back
+    to the print. A print preference, not content: no edit-log row, no
+    revision, and anything but the two values is refused with nothing written.
+    """
+    import pricesummary as PS
+    boq = STORE["boqs"].get(id)
+    if not boq:
+        return redirect(url_for("boq.list_boqs", msg="BOQ not found.", type="error"))
+    v = PS.orientation_value(request.form.get(PS.FIELD_ORIENT))
+    if v:
+        boq[PS.FIELD_ORIENT] = v
+    return redirect(url_for("boq.print_boq", id=id))
 
 
 # =============================================================================
@@ -6471,6 +6755,8 @@ def create_boq(imported: dict = None, editing: dict = None):
             editing["supply_subtotal"], editing["install_subtotal"] = sup, ins
             editing["subtotal"] = tot
             editing[RO.FIELD] = RO.form_choice(form, legacy=RO.is_on(editing, False))
+            import pricesummary as _PS
+            _PS.apply_form(editing, form, creating=False)
             _t, editing["round_off"], _g = grand_of(editing)
             if _new_ref != str(before.get("ref") or ""):
                 # The root renumbered: every revision of it follows (`<root>/N`).
@@ -6710,6 +6996,10 @@ def create_boq(imported: dict = None, editing: dict = None):
             # reads unticked: a BOQ was never rounded before today.
             boq[RO.FIELD] = RO.form_choice(form, legacy=False)
             _t, boq["round_off"], _g = grand_of(boq)
+            # The price summary tick and the terms SNAPSHOT (25 Nov 2026): a
+            # form without the editor (an import, a script) copies /settings.
+            import pricesummary as _PS
+            _PS.apply_form(boq, form, creating=True)
 
             STORE["boqs"][bid] = boq
             if _typed_n:
@@ -7008,6 +7298,22 @@ def create_boq(imported: dict = None, editing: dict = None):
 
     today = _date.today().isoformat()
 
+    # The PRICE SUMMARY tick and the document's own terms (25 Nov 2026, §0
+    # ninetieth block): what was posted; else the record being edited, or the
+    # BOQ a revision is raised from; else a COPY of the /settings default.
+    import pricesummary as PS
+    _ps_src = editing if editing is not None else revise_src
+    if request.method == "POST":
+        _ps_on = PS.form_on(request.form, True)
+        _ps_terms = PS.form_terms(request.form, PS.default_terms())
+    elif _ps_src is not None:
+        _ps_on = PS.is_on(_ps_src)
+        _ps_terms = (PS.terms_of(_ps_src) if PS.has_terms(_ps_src)
+                     else PS.default_terms())
+    else:
+        _ps_on, _ps_terms = True, PS.default_terms()
+    _ps_section = PS.form_section_html(_ps_on, _ps_terms)
+
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -7271,6 +7577,7 @@ def create_boq(imported: dict = None, editing: dict = None):
                           "The grand total only &mdash; no line, section or leg is rounded.")}
       </div>
     </div>
+{_ps_section}
 
     <div style="display:flex;gap:.8rem;justify-content:flex-end;margin-bottom:2rem;">
       <a href="{url_for('boq.list_boqs')}" class="btn btn-ghost">Cancel</a>

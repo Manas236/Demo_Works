@@ -895,8 +895,11 @@ PAGES = {
     #       ("settings", "/settings/"): ("f8f0d0cb199640ad", 85018,
     #        {"head": "ce8721ccb87d2120", "shell": "a1e6c63a6d4c6ac2",
     #         "chrome": "932b769fd94b56af", "main": "96a34b1da10ef362"})
-    ("settings",        "/settings/"):                 ("975ebf17fdba3da8", 86541,   # was 510db93db42692db (fallback phone 8898606303, 23 Nov 2026)
-        {"head": "ce8721ccb87d2120", "shell": "a1e6c63a6d4c6ac2", "chrome": "932b769fd94b56af", "main": "37a82950daa70f87"}),   # was dcd932dfd8ac277d (fallback phone 8898606303, 23 Nov 2026); §0 59th B3: moved=['main'], +1523 bytes
+    # ⚠ re-baselined 25 November 2026 (CLIENT_CHANGES.md §0 ninetieth block):
+    #   `main` ONLY, the new "Price Summary Page" section (title, tax line and
+    #   the default terms editor), +9,689 bytes. Declared.
+    ("settings",        "/settings/"):                 ("f80f8106d75fa567", 96230,   # was 975ebf17fdba3da8 / 86541 (price summary section, 25 Nov 2026), was 510db93db42692db (fallback phone 8898606303, 23 Nov 2026)
+        {"head": "ce8721ccb87d2120", "shell": "a1e6c63a6d4c6ac2", "chrome": "932b769fd94b56af", "main": "7a74f2bb9771200f"}),   # was 37a82950daa70f87 (price summary section, 25 Nov 2026), was dcd932dfd8ac277d (fallback phone 8898606303, 23 Nov 2026); §0 59th B3: moved=['main'], +1523 bytes
     # ⚠ re-baselined 22 September 2026 — `head` ONLY, by the four CSS rules the
     # role picker and the empty action cell needed (`AUTH_ADMIN_STYLES`, +262
     # bytes). `main` is byte-identical and that is the measurement that matters

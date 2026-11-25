@@ -38,7 +38,11 @@ def test_company_identity_is_seeded_not_hand_entered(client):
     settings.ensure_demo_settings()
     B.apply_settings(settings.load_saved())
 
-    assert len(STORE["settings"]) == 2
+    # ⚠ THREE from 25 November 2026 (CLIENT_CHANGES.md §0 ninetieth block):
+    #   the price summary page's title, tax line and default terms are a
+    #   GENUINE default, seeded like the charge heads.
+    assert len(STORE["settings"]) == 3
+    assert "price_summary" in STORE["settings"]
     assert "company" in STORE["settings"]
     assert "charge_heads" in STORE["settings"]
     filled = [v for v in B.current_settings().values() if str(v or "").strip()]
@@ -317,10 +321,14 @@ def test_script_close_in_a_clause_cannot_break_out(seeded, client):
     # ⚠ And, from 31 October 2026 (§0 sixty-fourth block, Part 4), the
     #   Resume-after-Back script `formdraft.script()` adds to the create form —
     #   counted from the leaf itself, so this stays an EXACT count.
+    # ⚠ And, from 25 November 2026 (§0 ninetieth block), the price summary
+    #   page's terms editor — counted from the leaf, the same way.
     import chrome
     import formdraft
+    import pricesummary
     expected = (1 + chrome.CHROME_SCRIPT.count("<script>")
-                + formdraft.script("form", "x").count("<script>"))
+                + formdraft.script("form", "x").count("<script>")
+                + pricesummary.EDITOR_JS.count("<script>"))
     assert html.count("<script>") == html.count("</script>") == expected
 
 

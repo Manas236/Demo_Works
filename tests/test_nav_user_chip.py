@@ -245,6 +245,11 @@ def test_the_frozen_modules_get_the_chip_without_being_edited(client):
                                    #   numbering + Resume"): highest used + 1, not a
                                    #   record count. create_quotation() gains the
                                    #   typed number and Resume after Back.
+        "set_print_orientation",   # 25 Nov 2026 — SEVENTH unfreeze (§0 ninetieth
+                                   #   block, the price summary page): the
+                                   #   Portrait / Landscape route; the cover is
+                                   #   drawn in view_quotation() and its fields
+                                   #   saved in create_ / edit_quotation()
     }
     src = (REPO / "quotation.py").read_text(encoding="utf8")
     # ⚠ The span starts at the first DECORATOR, not at `def`. `ast` reports

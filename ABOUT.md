@@ -966,7 +966,9 @@ and never part of `SHEET_STYLES`: a landscape `@page` on a desktop, a 297mm
 outer on screen, the size request withdrawn on a touch device (a phone scales a
 landscape page box onto portrait paper — the BOQ's 20 September lesson), and
 the page scaled onto a phone screen. It is **BOQ's mechanism lifted**, and the
-joint measurement sheet is its only user. ⚠ **The BOQ still carries its own
+joint measurement sheet was its only user until 25 November 2026, when the
+quotation printed **Landscape** became the second (§5 `/quotation`, the
+seventh narrow unfreeze). ⚠ **The BOQ still carries its own
 copy** in `BOQ_STYLES` / `BOQ_DOC_STYLES` / `BOQ_DOC_SCRIPT`, because four pinned
 register pages load `BOQ_STYLES` — §7 gap 46.
 
@@ -1499,6 +1501,32 @@ included**: every figure arrives computed as the dicts `pnl.py` returns, and
 this module turns numbers into coordinates. That is what keeps exactly one
 place in this application where money is worked out. `projectview.py` is its
 only importer (`dashboard.py` never was, whatever older notes say). See §5 `/projects`.
+
+### 2o. `pricesummary.py` — the PRICE SUMMARY cover, shared by the BOQ and the quotation (25 November 2026)
+
+CLIENT_CHANGES.md §0 **ninetieth** block. The client's RIL Jamnagar workbook
+opens with a one-page summary; the printed BOQ (`/boq/print`) and the printed
+quotation (`/quotation/view`) now do too. This leaf is what they share, so the
+cover looks the same on both:
+
+| What | Where |
+|---|---|
+| the cover's layout, `summary_html()`, and `SUMMARY_CSS` | here — fed **finished, formatted figures** by each chain, so it computes no subtotal, tax or round off |
+| the `/settings` record `STORE["settings"]["price_summary"]` — title, tax line, the ONE default terms list | read here (`settings_of()`, `ensure_seeded()`, `save_settings()`); the page that edits it is `settings.py` |
+| the form widgets — the tick, the ordered terms editor (add / remove / up / down), the quotation's two text boxes | `checkbox_html()`, `editor_html()`, `text_fields_html()`, `form_section_html()` |
+| the per-document readers and form parsers | `is_on()`, `terms_of()`, `has_terms()`, `orientation_of()`, `form_on()`, `form_terms()`, `form_text()`, `apply_form()` |
+| the screen-only Portrait / Landscape switch | `orientation_toolbar()` |
+
+⚠ **It imports `store` and `pipeline` and nothing else**, and that is the
+reason it is a leaf rather than a function in `settings.py` or `docsheet.py`:
+`boq.py` may not import `settings.py` (§2, `series.py`'s reason), and
+`docsheet.py` imports `quotation.py`, so a cover there could not be reached
+from inside the frozen quotation. `tests/test_import_directions.py` pins the
+arrows. The arithmetic stays in each chain — `boq._summary_cover()` reads
+`section_totals()` / `boq_totals()` / `grand_of()`; `view_quotation()` reads
+the record's own `subtotal` / `tax_info` / `round_off` / `grand_total` — which
+is `docsheet.py`'s rule for its totals rows, and what makes the cover match
+the detail to the paisa.
 
 ### 2k. `chrome.py` — the app shell, and why it is the fourth leaf (14 September 2026)
 
@@ -2558,6 +2586,29 @@ from 12 September 2026** (Supply only, §5 `/quotation`). Every quotation
 written from the catalogue, before 11 September 2026 or with the switch
 emptied since, keeps or gets whatever depth-1 rows the product picker writes.
 §5 `/quotation` has the whole mapping.
+
+### Price summary fields — on a BOQ and on a quotation (25 November 2026)
+
+CLIENT_CHANGES.md §0 ninetieth block. All optional, all read through one
+helper each in `pricesummary.py`, and none backfilled except the terms:
+
+| key | on | absent means | written by |
+|---|---|---|---|
+| `price_summary_on` | BOQ, quotation | **ON** — every document raised before has the cover | the create and edit forms' tick (`pricesummary.apply_form()`) |
+| `summary_terms` | BOQ, quotation | no terms stored; the cover prints none | COPIED from `/settings` at create; edited on the document's own form; `tools/backfill_terms.py` for the existing set |
+| `print_orientation` | BOQ, quotation | the document's own page: **BOQ `landscape`, quotation `portrait`** | the switch on the print page only (`POST …/print/<id>/orientation`) |
+| `summary_subject`, `summary_system` | quotation | the cover derives them (`pricesummary.quote_defaults()`) | the quotation's create (library mode) and edit forms |
+
+⚠ **`summary_terms` is a SNAPSHOT, §1.2's rule.** A printed document prints
+its own list, never the live `/settings` one; editing the default changes no
+document already raised. An **empty list is a choice** (somebody removed every
+term) and is never refilled — the backfill tests `has_terms()`, the key, not
+its length.
+
+⚠ **`tools/backfill_terms.py`** copies the current default into every BOQ and
+quotation that LACKS the key. Dry run by default, `--write` to apply,
+idempotent; it was **not** run with `--write` in the pass that wrote it — it
+runs at deploy, after a backup.
 
 ### Proforma Invoice
 
@@ -7224,6 +7275,28 @@ stylesheet stack ends `{_DS.PRINT_EDGE_STYLES}`, so the quotation prints with
 no browser header or footer like every other document (§2d *The page edge*).
 `VIEW_DOC_STYLES`' own `@page` margin is overridden by it, not edited.
 
+#### The price summary cover — 25 November 2026 · ⚠ SEVENTH NARROW UNFREEZE
+
+Under CLIENT_CHANGES.md §0's **ninetieth** block. **One new function**,
+`set_print_orientation()` (`POST /quotation/print/<id>/orientation`, under the
+existing `quotation.edit`), added to `tests/test_nav_user_chip.py`'s list, plus
+lines inside three already-unfrozen functions, every import in the body:
+
+- `view_quotation()` draws the cover first in the frame's body: one row, one
+  **Amount** column (the stored `subtotal`), then the tax lines, round off and
+  *Grand Total* exactly as the detail rows below print them from `tax_info` /
+  `round_off` / `grand_total`. With GST on the document there is **no** tax
+  band; with none, the `/settings` tax line. Subject and row text are
+  `summary_subject` / `summary_system`, else `pricesummary.quote_defaults()`.
+  The detail pages keep their own `_build_tnc()` terms; the snapshot terms
+  print on the cover. **Landscape** wraps the sheet in `sheet-landscape` and
+  loads `docsheet.LANDSCAPE_STYLES` / `LANDSCAPE_SCRIPT`; absent is portrait.
+- `create_quotation()` splices the form section in **the library mode only**
+  (after the format call, the number field's precedent), so the catalogue
+  mode's `1d7725a` golden does not move; its POST stores the tick, the two
+  text fields and a COPY of the default terms whichever mode posted.
+- `edit_quotation()` draws and saves the same section.
+
 #### Register (`/quotation/`)
 
 Four summary tiles (Open Pipeline / PO Expected / Won / Lost, with win-rate and
@@ -9751,6 +9824,41 @@ which nothing else does until somebody is holding the paper.
 This module **escapes user input** (`P.esc`) everywhere it interpolates.
 *(This used to read "unlike `quotation.py`". As of 27 August 2026 every module
 escapes — §7.7 is closed.)*
+
+#### The price summary cover, the Make column and the orientation (25 November 2026, §0 ninetieth block)
+
+`/boq/print` only — `/boq/view` passes none of the three and is unchanged.
+
+- **The cover** (`_summary_cover()`, through `pricesummary.summary_html()`) is
+  the first thing in the page frame's `<tbody>`, so the repeating letterhead
+  heads it and `break-after:page` ends it. One row per section (the section
+  code as Sr. No., its title as System Description) from `section_totals()`,
+  a Total row from `boq_totals()`, *Total Basic Value* on a split schedule,
+  and *Round Off* / *Grand Total* from `grand_of()` when the tick is on —
+  the calls the sheet prints from. Columns follow the rate basis the sheet
+  prints: Supply · Installation (`split`), one **Supply + Installation (SITC)**
+  (`sitc`), one track (`supply_only` / `installation_only`). An empty section
+  prints **0.00**, never hidden. The BOQ prints no tax (`PRINT_TAX`), so the
+  cover carries the `/settings` tax line. Off when `price_summary_on` is False.
+- **Make** (`show_make`, both orientations): a column straight after
+  Description, from the remark's `Make: X` part only (`make_from_remark()`),
+  drawn **only** on a BOQ where a line carries one (`any_make()`). Nothing
+  else of the remark prints; `PRINT_REMARKS` is unchanged. Width class
+  `cw-make` in `BOQ_PRINT_STYLES`.
+- **Orientation** — `print_orientation`, absent = **landscape**, the page the
+  BOQ always printed. **Portrait is a re-layout** (`_section_table_portrait()`):
+  Sr. No · Description · [Make] · Qty · Unit · Supply Rate · Supply Amount ·
+  Installation Rate · Installation Amount. The area quantities print as a
+  small line under the description ("L0 4 · External 12"), and on a
+  discounted track "Supply: Disc 10% · Net 900.00" — every figure the
+  landscape print shows, by the same cell helpers; money cells `nowrap`; the
+  heads repeat on every page. `BOQ_PORTRAIT_STYLES` loads last and asks for
+  `@page { size:A4 portrait }`. The switch is `boq.set_print_orientation`
+  under the existing `boq.print`.
+- **Measured** in headless Chromium at A4, both orientations, split and SITC:
+  no table or money cell overflows or wraps, and the cover fits page 1 with
+  all eleven terms (`tests/test_price_summary.py` holds the figures, the
+  occupancy grid with Make, and portrait-carries-every-figure).
 
 #### Numbering
 
@@ -14287,6 +14395,16 @@ order's **default Terms & Conditions**, `default_terms`, empty by default and
 kept by every counter write), **Starting Numbers**, the charge heads, and
 **Labour Cost**. Reached from the **Settings link in `_nav()`**, so it is one click from
 anywhere.
+
+⚠ **Price Summary Page, 25 November 2026** (CLIENT_CHANGES.md §0 ninetieth
+block): the cover's **title** and **tax line** (blank prints the built-in
+wording) and the ONE **default terms list**, an ordered editor (add, remove,
+move up, move down), stored in `STORE["settings"]["price_summary"]` and read
+through `pricesummary.py`. Seeded once with the client's eleven terms as a
+**genuine default** (`ensure_demo_settings()`, whatever the demo flag says),
+never over a record that exists. Saved only from a POST that carried the
+section. It is a default: a BOQ or quotation takes a copy at create, and this
+list changing moves no document already raised.
 
 ⚠ **Starting Numbers is new on 25 September 2026** (§7 gap 36) and it is the
 one block on this page whose **rule lives somewhere else**. The nine boxes, the

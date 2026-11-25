@@ -1461,6 +1461,13 @@ def create_quotation(imported: dict = None):
             # ensure_fields() also backfills quotations made before that module
             # existed, so old and new records behave identically.
             P.ensure_fields(STORE["quotations"][qid])
+            # The price summary tick, its two text fields and the terms
+            # SNAPSHOT (25 Nov 2026, §0 ninetieth block). A form without the
+            # editor (the catalogue mode, an import) copies /settings.
+            import pricesummary as _PSC
+            _PSC.apply_form(STORE["quotations"][qid], form, creating=True)
+            for _k in (_PSC.FIELD_SUBJECT, _PSC.FIELD_SYSTEM):
+                STORE["quotations"][qid][_k] = _PSC.form_text(form, _k)
             P.log_event(STORE["quotations"][qid], "Quotation created.")
             _DN.note_used(_DN.QT, "", _seq)
             _DN.record_override(STORE["quotations"][qid], f"QT-{_default_n:04d}",
@@ -2611,6 +2618,25 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
     #   right after the form rather than at the foot — the page's own last
     #   <script> is the picker, and tests run it alone.
     if from_library:
+        # The PRICE SUMMARY tick, subject, row description and the terms
+        # (25 Nov 2026, §0 ninetieth block) — the LIBRARY mode only, spliced
+        # in before the tax section so the catalogue mode's `1d7725a` golden
+        # does not move. A refused POST carries back what was posted; a GET
+        # opens with a COPY of the /settings default terms.
+        import pricesummary as _PSF
+        _posted = request.method == "POST"
+        html = html.replace(
+            "\n\n<!-- ════════ SECTION 4: TAX / DUTY ════════ -->",
+            "\n" + _PSF.form_section_html(
+                _PSF.form_on(form, True) if _posted else True,
+                _PSF.form_terms(form, _PSF.default_terms()) if _posted
+                else _PSF.default_terms(),
+                _PSF.text_fields_html(
+                    _PSF.form_text(form, _PSF.FIELD_SUBJECT) if _posted else "",
+                    _PSF.form_text(form, _PSF.FIELD_SYSTEM) if _posted else "",
+                    "Blank: the Ship To or Customer name + Quotation",
+                    "Blank: the Lead Sub-type, else Fire Protection System"))
+            + "\n\n<!-- ════════ SECTION 4: TAX / DUTY ════════ -->", 1)
         html = html.replace("</form>", "</form>" + (
             _DNF.NUMBER_STYLES
             + "<script>(function(){var f=document.getElementById('qf');if(!f)return;"
@@ -3067,6 +3093,45 @@ def view_quotation(id: str):
         for i, t in enumerate(tnc_terms)
     )
 
+    # ── The PRICE SUMMARY cover and the ORIENTATION (25 Nov 2026, §0
+    # ninetieth block). The cover's figures are THIS document's: the
+    # subtotal, the tax lines and round off this page prints below, read from
+    # the same stored `tax_info` / `round_off` / `grand_total`, so the cover
+    # matches the detail to the paisa. With GST on the document the cover
+    # shows it and the grand total; with none it carries the /settings tax
+    # line. The terms are the quotation's OWN snapshot. Portrait is the
+    # quotation's own default, the page it always printed.
+    import pricesummary as _PSV
+    orient    = _PSV.orientation_of(q, _PSV.PORTRAIT)
+    landscape = orient == _PSV.LANDSCAPE
+    cover     = ""
+    if _PSV.is_on(q):
+        _cfg = _PSV.settings_of()
+        _subj, _sys = _PSV.quote_defaults(q)
+        _tot = []
+        if has_tax:
+            for tname, tamt in tax_info.items():
+                if tname in skip_keys:
+                    continue
+                r = tax_info.get(rate_keys.get(tname, ""), 0)
+                _tot.append((f"{tname} @ {r:g}%" if r else str(tname), [_inr(tamt)]))
+        if abs(float(q.get("round_off") or 0.0)) >= 0.005:
+            import roundoff as _ROV
+            _tot.append(("Round off", [_ROV.label(q["round_off"])]))
+        _tot.append(("Grand Total" if has_tax else "Total", [_inr(q["grand_total"])]))
+        _to_first = ((q.get("to") or "").strip().split("\n") or [""])[0].strip()
+        cover = _PSV.summary_html(
+            title=_cfg["title"], to_name=_to_first or (q.get("account_name") or ""),
+            subject=(q.get(_PSV.FIELD_SUBJECT) or "").strip() or _subj,
+            heads=["Amount"],
+            rows=[("A", (q.get(_PSV.FIELD_SYSTEM) or "").strip() or _sys,
+                   [_inr(subtotal)])],
+            totals=_tot, tax_line="" if has_tax else _cfg["tax_line"],
+            terms=_PSV.terms_of(q))
+    orient_switch = _PSV.orientation_toolbar(
+        url_for("quotation.set_print_orientation", id=id), orient,
+        _AUTH.can_reach("quotation.set_print_orientation"))
+
     words     = _amount_in_words(q["grand_total"])
     comp_br   = P.esc(q.get("company_branch")) or P.esc(B.COMPANY_NAME)
     signatory = P.esc(q.get("auth_signatory")) or P.esc(B.COMPANY_SIGNATORY)
@@ -3077,7 +3142,7 @@ def view_quotation(id: str):
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{B.page_title(q['ref'] + " Quotation")}</title>
   {B.HEAD_ICON}
-  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{_DS.PRINT_EDGE_STYLES}
+  {BASE_STYLES}{VIEW_DOC_STYLES}{QUOTATION_STYLES}{P.PIPELINE_STYLES}{_DS.PRINT_EDGE_STYLES}{_PSV.SUMMARY_CSS if cover else ""}{(_DS.LANDSCAPE_STYLES + _DS.LANDSCAPE_SCRIPT) if landscape else ""}
 </head>
 <body>
 {_nav()}
@@ -3092,6 +3157,7 @@ def view_quotation(id: str):
     <a href="{create_url}" class="btn btn-ghost">+ New</a>
     <a href="{pi_url}"     class="btn btn-ghost">&#129534;&nbsp;Raise Proforma</a>
     <a href="{po_url}"     class="btn btn-ghost">&#128230;&nbsp;Raise PO</a>{del_q}
+    {orient_switch}
     <button class="btn" onclick="window.print()">&#128438;&nbsp;Print</button>
   </div>
 </div>
@@ -3099,7 +3165,7 @@ def view_quotation(id: str):
 {alert_html}{_EL.band(q, "quotation")}
 {deal_panel_html}
 
-<div class="doc-outer">
+<div class="doc-outer{" sheet-landscape" if landscape else ""}">
 <div class="quotation-doc">
 
   <!-- thead/tfoot of .page-frame are the only way to repeat a band on every
@@ -3122,7 +3188,7 @@ def view_quotation(id: str):
   </td></tr></tfoot>
 
   <tbody><tr><td>
-
+{cover}
   <div class="doc-box">
     <div class="doc-title">QUOTATION</div>
 
@@ -3309,6 +3375,7 @@ def edit_quotation(id: str, imported: dict = None):
     import docnum as _DN       # the number, forward only (2 Nov 2026, Part 4)
     import roundoff as _ROF
     import auth as _AUTH
+    import pricesummary as _PSE   # the price summary page (25 Nov 2026)
 
     q = STORE["quotations"].get(id)
     if not q:
@@ -3405,6 +3472,11 @@ def edit_quotation(id: str, imported: dict = None):
                 q["ref"] = ref_now
             q.update(vals)
             q.update(rates)
+            # The price summary page (25 Nov 2026, §0 ninetieth block): the
+            # tick, its two text fields and the quotation's OWN terms.
+            _PSE.apply_form(q, f, creating=False)
+            for _k in (_PSE.FIELD_SUBJECT, _PSE.FIELD_SYSTEM):
+                q[_k] = _PSE.form_text(f, _k, q.get(_k) or "")
             q.update({"tax_type": tax_type, "tax_info": tax_info, "subtotal": subtotal,
                       "grand_total": grand_total, "round_off": round_off,
                       "round_off_on": round_on, "line_items": lines,
@@ -3554,6 +3626,16 @@ def edit_quotation(id: str, imported: dict = None):
                        sources=sources)}
       {_ROF.checkbox_html(round_shown)}
     </div>
+    {_PSE.form_section_html(
+        _PSE.form_on(f, True) if request.method == "POST" else _PSE.is_on(q),
+        _PSE.form_terms(f, _PSE.terms_of(q)) if request.method == "POST"
+        else (_PSE.terms_of(q) if _PSE.has_terms(q) else _PSE.default_terms()),
+        _PSE.text_fields_html(
+            _PSE.form_text(f, _PSE.FIELD_SUBJECT, q.get(_PSE.FIELD_SUBJECT) or "")
+            if request.method == "POST" else (q.get(_PSE.FIELD_SUBJECT) or ""),
+            _PSE.form_text(f, _PSE.FIELD_SYSTEM, q.get(_PSE.FIELD_SYSTEM) or "")
+            if request.method == "POST" else (q.get(_PSE.FIELD_SYSTEM) or ""),
+            *_PSE.quote_defaults(q)))}
     <div class="form-actions">
       <button type="submit" class="btn">Save changes</button>
       <a href="{view_url}" class="btn btn-ghost">Cancel</a>
@@ -3573,3 +3655,25 @@ def edit_quotation(id: str, imported: dict = None):
   }}
   </script>
 </main></body></html>""")
+
+
+@quotation_bp.route("/print/<id>/orientation", methods=["POST"])
+def set_print_orientation(id: str):
+    """
+    The Portrait / Landscape switch on `/quotation/view` (25 November 2026,
+    CLIENT_CHANGES.md §0 ninetieth block, R5): stores `print_orientation` on
+    the quotation and goes back to it. THE SEVENTH NARROW UNFREEZE is this
+    one function plus the lines in `create_quotation()`, `edit_quotation()`
+    and `view_quotation()` that draw and save the price summary page. A print
+    preference, not content: no edit-log row, and anything but the two values
+    is refused with nothing written. Every import is in the body.
+    """
+    import pricesummary as _PSO
+    q = STORE["quotations"].get(id)
+    if not q:
+        return redirect(url_for("quotation.list_quotations",
+                                msg="Quotation not found.", type="error"))
+    v = _PSO.orientation_value(request.form.get(_PSO.FIELD_ORIENT))
+    if v:
+        q[_PSO.FIELD_ORIENT] = v
+    return redirect(url_for("quotation.view_quotation", id=id))

@@ -210,6 +210,11 @@ def ensure_demo_settings() -> None:
     # categories.
     if CHARGE_HEADS_RECORD not in STORE["settings"]:
         STORE["settings"][CHARGE_HEADS_RECORD] = {"heads": list(DEFAULT_CHARGE_HEADS)}
+    # GENUINE DEFAULT (25 Nov 2026, §0 ninetieth block): the price summary
+    # page's title, tax line and the client's own eleven terms. Seeded when
+    # the record is ABSENT and never over one the client has edited.
+    import pricesummary as _PS
+    _PS.ensure_seeded()
     # DEMO DATA. Only ever fills a gap even then: an identity somebody has
     # actually entered — or one loaded back out of MySQL a moment ago — is
     # never overwritten, and turning the flag off never removes one.
@@ -1236,6 +1241,10 @@ def edit_settings():
         sf_data, sf_error = _validate_series_floors(request.form)
         error = (error or po_error or dc_error or wo_error or ch_error
                  or lb_error or mc_error or sf_error or un_error)
+        import pricesummary as _PS
+        ps_values = {"title": _PS.form_text(request.form, "ps_title", ""),
+                     "tax_line": _PS.form_text(request.form, "ps_tax_line", ""),
+                     "terms": _PS.form_terms(request.form, _PS.settings_of()["terms"])}
         if not error:
             save_po_series(po_data["prefix"], po_data["next_no"])
             save_dc_series(dc_data["prefix"], dc_data["next_no"])
@@ -1246,6 +1255,11 @@ def edit_settings():
             save_measurement_columns(mc_data)
             UN.save_custom(un_data)
             save_labour_settings(lb_data["ot_multiplier"])
+            # Only from a form that offered the section, so a POST without it
+            # (an older page, a script) leaves the record as it is.
+            if request.form.get(_PS.MARK_TERMS) is not None:
+                _PS.save_settings(ps_values["title"], ps_values["tax_line"],
+                                  ps_values["terms"])
             # Store only what differs from the default, so a later change to
             # branding.py still reaches anyone who never overrode that field.
             overrides = {k: v for k, v in data.items()
@@ -1287,6 +1301,11 @@ def edit_settings():
         lb_values = labour_settings()
         sf_values = {s.key: (str(f) if f else "")
                      for s, _sc, f, _mx, _nx in series_floor_rows()}
+        import pricesummary as _PS
+        _rec = STORE["settings"].get(_PS.RECORD) or {}
+        ps_values = {"title": str(_rec.get("title") or "") if _rec else _PS.DEFAULT_TITLE,
+                     "tax_line": str(_rec.get("tax_line") or "") if _rec else _PS.DEFAULT_TAX_LINE,
+                     "terms": _PS.settings_of()["terms"]}
 
     msg      = request.args.get("msg")
     msg_type = request.args.get("type", "success")
@@ -1612,6 +1631,33 @@ def edit_settings():
             <textarea id="unit_list" name="unit_list" rows="5"
                       placeholder="Running Mtr|MTR">{P.esc(un_values)}</textarea>
           </div>
+        </div>
+
+        <div class="form-section">
+          <div class="section-title">Price Summary Page &middot; BOQ and Quotation</div>
+          <p class="fld-hint" style="margin:-.5rem 0 1rem;">
+            The one-page price summary printed before a <b>BOQ</b> and a
+            <b>quotation</b>. The terms below are the <b>default</b>: a new BOQ
+            or quotation takes a <b>copy</b> of them when it is created, and
+            that copy is then edited on the document itself. Changing this list
+            changes no document already raised. Leave the title or the tax line
+            blank to print the built-in wording.
+          </p>
+          <div class="fg2">
+            <div class="form-group">
+              <label for="ps_title">Summary title</label>
+              <input type="text" id="ps_title" name="ps_title" maxlength="{_PS.MAX_TEXT_CHARS}"
+                     value="{P.esc(ps_values.get('title', ''))}"
+                     placeholder="{P.esc(_PS.DEFAULT_TITLE)}"/>
+            </div>
+            <div class="form-group">
+              <label for="ps_tax_line">Tax line <span style="font-weight:500;text-transform:none;">(when the document prints no tax)</span></label>
+              <input type="text" id="ps_tax_line" name="ps_tax_line" maxlength="{_PS.MAX_TEXT_CHARS}"
+                     value="{P.esc(ps_values.get('tax_line', ''))}"
+                     placeholder="{P.esc(_PS.DEFAULT_TAX_LINE)}"/>
+            </div>
+          </div>
+          {_PS.editor_html(ps_values.get("terms") or [], "Default Terms &amp; Conditions")}
         </div>
 
         <div class="set-actions">
