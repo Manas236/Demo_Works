@@ -68,3 +68,7 @@ client_docs/
 [0-9][0-9][A-Z][A-Z][A-Z].md
 .claude/settings.json
 .claude/settings.local.json
+
+# Headless-print verification renders (HTML, PDF, PNG). Regenerated on demand,
+# never committed (CLIENT_CHANGES.md §0 ninetieth block).
+.print_check/
