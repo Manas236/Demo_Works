@@ -7990,6 +7990,88 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 26 November 2026, follow-up to the ninetieth block — THE TERMS LIBRARY, ONE TERMS LIST PER QUOTATION PRINT, AND THE SUMMARY FIELDS IN THE EDIT LOG
+>
+> **A new block, not an amendment.** The **ninety-first** occasion, on
+> `antigravity-dev`, on top of `6fa9b67`. **Commercial status: left for
+> Manas to record.** Not deployed.
+>
+> **The client's ruling (Yogesh, WhatsApp, 25 November 2026):**
+> *"Hya aankhi jya hotya tya aani jya astil tujhya mahiti madhe tya add kar
+> aani add karnyasathi hi jaga thev"*: add these terms, plus any others there
+> are or you know of, and keep a place to add more. **He did not answer
+> whether the payment split (50 + 30 + 60 + 10 = 150%) is wrong**, so it stays
+> verbatim and the app warns about it.
+>
+> **Part 1, the terms library** (`pricesummary.py`, `/settings`). Every term
+> has text, a category (Scope, Exclusions, Site, Payment, Taxes, Commercial,
+> Delivery, Warranty, Legal), an *On by default* tick and an order; /settings
+> adds, edits, deletes, reorders, recategorises and ticks. **Migration:** the
+> eleven become the first eleven library terms, ON, text unchanged, in the
+> categories ruled (Scope, Scope, Exclusions, Exclusions, Site, Exclusions,
+> Payment × 4, Taxes); an edited default list migrates as it stands, all ON,
+> "Commercial" unless the text is a seed term exactly; nothing is lost
+> (`legacy_terms` keeps the old list too). The seventeen extra terms in the
+> brief are seeded OFF once and never over an edit. Every BOQ and quotation
+> form (create, edit, revision) shows the document's own list plus **Add from
+> library** (terms not already on it, grouped by category) and **Add your own
+> term** with **Also save to library** for users who can edit /settings. New
+> documents start with the ON terms in library order; a revision keeps its
+> predecessor's list. Snapshot rule unchanged. `tools/backfill_terms.py` now
+> copies the ON terms. **Payment warning**: "Payment terms add up to N%." in
+> amber on the form, the print page's action bar and /settings, never blocking,
+> never printed.
+>
+> **Part 2, one terms list per quotation print.** Cover ON: `_build_tnc()`'s
+> block does not print; the stored terms are the only list. Its per-quotation
+> data prints under them, filled only: **Terms of Delivery** (`delivery_terms`),
+> **Delivery** (`delivery_date`), **Dispatch Through** (`dispatch_through`),
+> **Validity** (`validity_days` days). **`payment_terms` does not print with
+> the cover** (it stays in the header's Mode/Term of Payment row). Cover OFF:
+> the printed document is byte-identical to `5c0749c` (pinned), and the whole
+> page equals it once the screen-only Portrait / Landscape switch is cut out
+> (measured). The quotation form says "With the price summary page on, these
+> are the only terms printed."
+>
+> **Part 3, the edit log.** The tick, the terms list (numbered, before and
+> after), the quotation's two summary texts and the orientation saved from
+> the print page are logged through `editlog` with who and when, on both
+> documents. **/settings keeps no edit log**, so library edits are not
+> logged; none was invented.
+>
+> **`quotation.py` functions touched:** `create_quotation()`,
+> `edit_quotation()`, `view_quotation()`, `set_print_orientation()`; no new
+> function.
+>
+> **Goldens moved, declared:** `test_page_golden.py`'s `/settings/`, in `main`
+> only (the library editor). No print golden moved: the three BOQ goldens are
+> untouched (their BOQs store no terms, so no note is drawn), and every other
+> document's print is byte-identical.
+>
+> **Judgement calls, declared:**
+> 1. **A term saved to the library from a document lands OFF by default**,
+>    in the category picked beside the box (default Commercial).
+> 2. **The old block's other content is not carried over**: the
+>    "ex works" wording, the tax clause (the cover prints the tax lines), the
+>    payment default and the twelve standing clauses (warranty, commissioning,
+>    force majeure and the rest). Anything wanted from them can be added to
+>    the library and picked.
+> 3. **The print bar's payment note shows only when the cover prints the
+>    terms**; with the cover off no terms print, so there is nothing to warn
+>    about on paper.
+> 4. **In /settings a term is a payment line by category Payment or by the
+>    keywords; on a document, by matching a Payment library term's text or by
+>    the keywords**, as ruled.
+> 5. **Seeded and migrated library ids are stable** (`term-01`, `extra-01`),
+>    so the page renders the same bytes every time.
+> 6. **A record migrated from an emptied list** has an empty library plus the
+>    seventeen extras, all OFF: the emptying is kept.
+>
+> **Tests.** `tests/test_terms_library.py` (17); `test_price_summary.py`'s
+> seed and /settings tests rewritten for the library.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
