@@ -7886,6 +7886,110 @@ one automatic.
 >
 > **The gate is not lifted and this is not a precedent.**
 
+> ### ⚠ AUTHORISATION — 25 November 2026, client ask — A ONE-PAGE PRICE SUMMARY BEFORE THE PRINTED BOQ AND QUOTATION, AND A PORTRAIT / LANDSCAPE CHOICE FOR THE WHOLE PRINT
+>
+> **A new block, not an amendment.** The **ninetieth** occasion, on
+> `antigravity-dev`. **Commercial status: left for Manas to record.** Not
+> deployed; prod deploy is a separate step.
+>
+> **The ask.** Samruddhi Fire sent their own RIL Jamnagar quotation workbook
+> and said, in Marathi, that a quotation should look like it: *"first one page
+> summary, then the rest of the sheet"*. Their tab "Summary": letterhead, a
+> title band, "To, <client>", a centred subject line, a table of Sr. No. (the
+> section letter) / System Description / Supply Amount / Installation Amount
+> with a Total row, a "TAXES WILL BE EXTRA" band and a numbered "Terms &
+> Condition :-" list. Their tab "Quotation" is what `/boq/print` already is.
+>
+> **Rulings (Manas, in the brief), as built.**
+> - **R1** both prints: `/boq/print/<id>` and `/quotation/view/<id>`.
+>   `quotation.py`'s **seventh narrow unfreeze**: one new function,
+>   `set_print_orientation()`, plus lines inside `create_quotation()`,
+>   `edit_quotation()` and `view_quotation()`; `tests/test_nav_user_chip.py`
+>   names it.
+> - **R2** the cover is page 1 and the document follows unchanged in
+>   content. *Include price summary page* on the BOQ form and the quotation
+>   form, default ON; `price_summary_on` absent reads ON, so every existing
+>   document gets the cover.
+> - **R3** ONE default terms list at `/settings` (add, remove, move up, move
+>   down), seeded with the client's eleven terms verbatim, never over a list
+>   the client has edited. COPIED into a document at create
+>   (`summary_terms`) and edited on its own form after; the print reads the
+>   document's copy, never the live list. `tools/backfill_terms.py` (dry run
+>   by default, `--write` to apply, idempotent) fills the existing documents.
+>   **Not run with `--write`**: it runs at deploy.
+> - **R4** the title and the tax line are `/settings` text fields with the
+>   client's wording as the defaults.
+> - **R5** `print_orientation` on the document; a Portrait / Landscape switch
+>   in the print page's action bar saves it. Absent = the document's own
+>   page: the BOQ landscape, the quotation portrait.
+> - **R6** a portrait BOQ is a RE-LAYOUT: Sr. No | Description | [Make] |
+>   Qty | Unit | Supply Rate | Supply Amount | Installation Rate |
+>   Installation Amount; area quantities and a discount's net rate print as a
+>   small line under the description. The quotation in landscape is the same
+>   sheet on the landscape frame (`docsheet.LANDSCAPE_*`).
+> - **R7** SITC: ONE "Supply + Installation (SITC)" column. The quotation:
+>   one row, one Amount column, then the tax lines, round off and grand total
+>   it prints; the tax band only when it prints no tax.
+> - **R8** the cover's figures are the chain's own (`boq.section_totals()`,
+>   `boq_totals()`, `grand_of()`; the quotation's stored `subtotal`,
+>   `tax_info`, `round_off`, `grand_total`). An empty section prints 0.00.
+> - **R9** only the BOQ and `/settings` goldens moved (below).
+> - **R10** every new string escaped; no em dash in any new printed or
+>   on-screen text. **R11** the new leaf `pricesummary.py` (store + pipeline
+>   only) holds the layout, the record and the widgets.
+>
+> **Asked and answered before building (Manas, 25 Nov 2026).**
+> 1. **Make on the BOQ**: a BOQ line has no make field. Answer: a Make
+>    column in **both** orientations, from the remark's own `Make: X` part
+>    only (`boq.make_from_remark()`), drawn **only on a BOQ where a line
+>    carries one**, and on `/boq/print` only.
+> 2. **The quotation's cover columns**: a single **Amount** column.
+> 3. **The footer**: no duplicate contact block; the repeating letterhead
+>    already carries the address, phone, e-mail and web.
+> 4. **The quotation's subject and row text**: **new fields on the form**,
+>    `summary_subject` and `summary_system`; blank prints "<Ship To name, else
+>    Customer> Quotation" and the Lead Sub-type, else "Fire Protection
+>    System".
+>
+> **Goldens moved, declared.** `test_print_golden.py`'s three BOQ pins
+> (BOQ, discounted BOQ, as-is BOQ), each in `head` and `foot-strip` only.
+> **Proved:** with `pricesummary.is_on` forced False, all three differ in
+> `head` alone (the new stylesheets and the Portrait / Landscape switch);
+> letterhead, doc-box, party, sections, grand and signature are
+> byte-identical. `test_page_golden.py`'s `/settings/` in `main` only (the new
+> section). The quotation has no print golden. Every other print golden
+> (TI, PI, PO, product inquiry, RA, DC, WO, measurement, merged TI, payslip)
+> is untouched, and so is the catalogue-mode quotation form's `1d7725a`
+> golden: the form section is spliced in the library mode only.
+>
+> **Judgement calls, declared:**
+> 1. **The quotation keeps its own T&C block on the detail pages**
+>    (`_build_tnc()`); the snapshot terms print on the cover only. R2 says
+>    the document follows unchanged in content, so the two lists both print.
+> 2. **`/boq/view` is unchanged**: no cover, no switch, no Make column. The
+>    rulings name the print.
+> 3. **Supply only / Installation only BOQs** show their one track's column
+>    on the cover, the way their sheet prints.
+> 4. **A no-tax quotation** (tax head *No tax*) prints the tax band, like
+>    the client's own sheet.
+> 5. **Permissions**: the BOQ switch under the existing `boq.print`, the
+>    quotation's under the existing `quotation.edit`; no permission minted.
+>    Without it the bar says which way it prints. Endpoints 225 → 227.
+> 6. **A revision opens with its predecessor's terms and tick**; an edit with
+>    the record's own; a record with none, with a copy of the default.
+> 7. **Terms and tick changes are not edit-logged** (`editlog`): they are
+>    not fields on `BOQ_EDIT_FIELDS` or the quotation's list.
+> 8. **The orientation switch writes no edit-log row**: a print preference.
+>
+> **Tests.** `tests/test_price_summary.py` (23); `test_import_directions.py`
+> gains the leaf (7 arrows). Counts adjusted with the reason written beside
+> them: `test_boq.py` (the first section colgroup), `test_boq_print_columns.py`
+> (+1 head each from the cover), `test_hardening.py` (3 settings records;
+> the editor's script). Suite **6136 → 6166 passed**, 29 skipped, both runs
+> with openpyxl 3.1.5, no client workbooks, no `.env`, no Python Playwright.
+>
+> **The gate is not lifted and this is not a precedent.**
+
 The queue lives in [STATE.md](STATE.md). This file feeds it; it is not it.
 
 Phase 3 scope lives in [CLIENT_CHANGES-2.md](CLIENT_CHANGES-2.md). This file is
