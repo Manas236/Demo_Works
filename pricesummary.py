@@ -44,6 +44,9 @@ reading the record and never the live BOQ.
 unfrozen functions) can both reach it, and it can reach neither.
 """
 
+import re
+import uuid
+
 from store import STORE
 import pipeline as P
 
@@ -78,13 +81,63 @@ DEFAULT_TERMS = (
     "be charged extra as applicable at the time of invoicing.",
 )
 
+# The TERMS LIBRARY (26 Nov 2026, §0 ninety-first block). Every term has a
+# category; the client's eleven above are the first eleven, ON by default.
+CATEGORIES = ("Scope", "Exclusions", "Site", "Payment", "Taxes", "Commercial",
+              "Delivery", "Warranty", "Legal")
+SEED_CATEGORIES = ("Scope", "Scope", "Exclusions", "Exclusions", "Site",
+                   "Exclusions", "Payment", "Payment", "Payment", "Payment",
+                   "Taxes")
+FALLBACK_CATEGORY = "Commercial"
+
+# Seeded OFF by default once (`extras_seeded`), never over an edit, never
+# back after a delete. Available to pick; printed only when picked.
+EXTRA_TERMS = (
+    ("Commercial", "This offer is valid for 30 days from the date of quotation."),
+    ("Commercial", "Final billing will be on actual quantities measured jointly at "
+                   "site, at the unit rates quoted."),
+    ("Commercial", "Any extra or additional work not covered in this quotation will "
+                   "be charged separately at mutually agreed rates."),
+    ("Delivery", "Material will be delivered within 2 to 3 weeks from receipt of the "
+                 "confirmed order and advance payment, subject to availability."),
+    ("Delivery", "Material once supplied to site will not be taken back."),
+    ("Warranty", "Equipment supplied carries the manufacturer's standard warranty "
+                 "against manufacturing defects."),
+    ("Warranty", "Our workmanship is warranted for 12 months from the date of "
+                 "commissioning. Damage due to misuse, mishandling or work by other "
+                 "agencies is not covered."),
+    ("Exclusions", "Statutory approvals, liaisoning and NOC from the Fire Department "
+                   "are excluded unless specifically mentioned."),
+    ("Exclusions", "Scaffolding, staging and lifting arrangements beyond A-type "
+                   "ladders shall be provided by the Client."),
+    ("Exclusions", "Power cabling up to the pump control panel and earthing are "
+                   "excluded unless specifically mentioned."),
+    ("Site", "Suitable accommodation for our labour at or near the site shall be "
+             "provided by the Client."),
+    ("Site", "Storage and safety of material at site after delivery is in the "
+             "Client's scope."),
+    ("Site", "Idle time of our manpower caused by reasons attributable to the Client "
+             "or other agencies will be charged extra."),
+    ("Site", "A clear and ready work front shall be made available by the Client "
+             "before mobilization."),
+    ("Payment", "Running bills shall be paid within 15 days of submission."),
+    ("Legal", "We shall not be liable for delays caused by events beyond our control, "
+              "including natural calamities, strikes or government restrictions."),
+    ("Legal", "All disputes are subject to Navi Mumbai jurisdiction."),
+)
+
 # Per-document keys.
 FIELD_ON = "price_summary_on"
 FIELD_TERMS = "summary_terms"
 FIELD_ORIENT = "print_orientation"
 MARK_ON = "price_summary_present"     # the form offered the tick
 FIELD_TERM = "summary_term"           # one posted <input> per term, in order
+FIELD_TERM_LIB = "summary_term_lib"   # parallel: a category = "also save to library"
 MARK_TERMS = "summary_terms_present"  # the form offered the editor
+
+# The /settings library editor's parallel lists.
+MARK_LIB = "summary_library_present"
+LIB_ID, LIB_TEXT, LIB_CAT, LIB_ON = "lib_id", "lib_text", "lib_cat", "lib_on"
 
 # The quotation's two (it has no project name and no sections): the cover's
 # subject line and its one row's System Description. Blank prints a default
@@ -96,6 +149,7 @@ PORTRAIT, LANDSCAPE = "portrait", "landscape"
 ORIENTATIONS = (PORTRAIT, LANDSCAPE)
 
 MAX_TERMS = 60
+MAX_LIBRARY = 300
 MAX_TERM_CHARS = 1000
 MAX_TEXT_CHARS = 200
 
@@ -104,38 +158,178 @@ MAX_TEXT_CHARS = 200
 # THE /settings RECORD
 # =============================================================================
 
+def _entry(text: str, category: str, on: bool, eid: str = "") -> dict:
+    return {"id": eid or uuid.uuid4().hex[:12], "text": text,
+            "category": category if category in CATEGORIES else FALLBACK_CATEGORY,
+            "on": bool(on)}
+
+
 def ensure_seeded() -> None:
-    """Seed the record with the client's defaults when it is ABSENT. A record
-    that exists, however it was edited (an emptied list included), is never
-    touched. A genuine default, seeded whatever SAMRUDDHI_DEMO_DATA says."""
-    if RECORD not in STORE["settings"]:
-        STORE["settings"][RECORD] = {"title": DEFAULT_TITLE,
-                                     "tax_line": DEFAULT_TAX_LINE,
-                                     "terms": list(DEFAULT_TERMS)}
+    """
+    Seed, and migrate, the record. Idempotent: a second call changes nothing.
+
+    * ABSENT: the client's eleven, ON by default, in `SEED_CATEGORIES`.
+    * The 25 Nov shape (a flat `terms` list, no `library`): THAT list becomes
+      the library as it stands, every term ON by default, each in its seed
+      category when its text is a seed term exactly, else "Commercial". The
+      unedited seed therefore migrates to exactly the eleven above, and an
+      edited list loses nothing. The flat list is kept as `legacy_terms`.
+    * The extras (`EXTRA_TERMS`) are appended OFF by default once, skipping a
+      text already there; `extras_seeded` stops a deleted one coming back.
+
+    A genuine default, seeded whatever SAMRUDDHI_DEMO_DATA says.
+    """
+    rec = STORE["settings"].get(RECORD)
+    if not isinstance(rec, dict):
+        rec = {"title": DEFAULT_TITLE, "tax_line": DEFAULT_TAX_LINE}
+        STORE["settings"][RECORD] = rec
+    if not isinstance(rec.get("library"), list):
+        cats = dict(zip(DEFAULT_TERMS, SEED_CATEGORIES))
+        old = rec.get("terms")
+        texts = clean_terms(old) if isinstance(old, list) else list(DEFAULT_TERMS)
+        # Stable ids for what is seeded or migrated (`term-01`...), so the
+        # page renders the same bytes every time; new terms get a uuid.
+        rec["library"] = [_entry(t, cats.get(t, FALLBACK_CATEGORY), True, f"term-{i + 1:02d}")
+                          for i, t in enumerate(texts)]
+        if isinstance(old, list):
+            rec["legacy_terms"] = list(old)
+            rec.pop("terms", None)
+    if not rec.get("extras_seeded"):
+        have = {e.get("text") for e in rec["library"] if isinstance(e, dict)}
+        for i, (cat, text) in enumerate(EXTRA_TERMS):
+            if text not in have:
+                rec["library"].append(_entry(text, cat, False, f"extra-{i + 1:02d}"))
+        rec["extras_seeded"] = True
+
+
+def library() -> list:
+    """The library, in order: `[{"id", "text", "category", "on"}]` (copies)."""
+    ensure_seeded()
+    out = []
+    for e in STORE["settings"][RECORD].get("library") or []:
+        if isinstance(e, dict) and str(e.get("text") or "").strip():
+            out.append({"id": str(e.get("id") or ""), "text": str(e["text"]),
+                        "category": e.get("category") if e.get("category") in CATEGORIES
+                        else FALLBACK_CATEGORY, "on": bool(e.get("on"))})
+    return out
 
 
 def settings_of() -> dict:
-    """`{"title", "tax_line", "terms"}`: the stored record, or the defaults
-    when none is stored. A blank title or tax line reads as its default."""
-    rec = STORE["settings"].get(RECORD)
-    if not isinstance(rec, dict):
-        return {"title": DEFAULT_TITLE, "tax_line": DEFAULT_TAX_LINE,
-                "terms": list(DEFAULT_TERMS)}
-    terms = rec.get("terms")
+    """`{"title", "tax_line", "terms", "library"}`. `terms` is the ON-by-default
+    set, in library order. A blank title or tax line reads as its default."""
+    ensure_seeded()
+    rec = STORE["settings"][RECORD]
+    lib = library()
     return {"title": str(rec.get("title") or "").strip() or DEFAULT_TITLE,
             "tax_line": str(rec.get("tax_line") or "").strip() or DEFAULT_TAX_LINE,
-            "terms": clean_terms(terms) if isinstance(terms, list) else []}
+            "terms": [e["text"] for e in lib if e["on"]], "library": lib}
 
 
-def save_settings(title: str, tax_line: str, terms: list) -> None:
-    STORE["settings"][RECORD] = {"title": str(title or "").strip()[:MAX_TEXT_CHARS],
-                                 "tax_line": str(tax_line or "").strip()[:MAX_TEXT_CHARS],
-                                 "terms": clean_terms(terms)}
+def save_settings(title: str, tax_line: str, entries: list) -> None:
+    """Replace the record. `entries` are library dicts, or plain strings (each
+    then a term ON by default in "Commercial")."""
+    ensure_seeded()
+    rec = STORE["settings"][RECORD]
+    lib = []
+    for e in entries or []:
+        if isinstance(e, str):
+            e = {"text": e, "category": FALLBACK_CATEGORY, "on": True}
+        text = clean_terms([e.get("text")])
+        if text:
+            lib.append(_entry(text[0], e.get("category"), e.get("on"), e.get("id") or ""))
+    rec.update({"title": str(title or "").strip()[:MAX_TEXT_CHARS],
+                "tax_line": str(tax_line or "").strip()[:MAX_TEXT_CHARS],
+                "library": lib[:MAX_LIBRARY], "extras_seeded": True})
+
+
+def library_add(text: str, category: str, on: bool = False) -> bool:
+    """Add a term to the library from a document's form, OFF by default, unless
+    the same text is already there. True when it was added."""
+    ensure_seeded()
+    t = clean_terms([text])
+    if not t:
+        return False
+    lib = STORE["settings"][RECORD]["library"]
+    if any(isinstance(e, dict) and e.get("text") == t[0] for e in lib):
+        return False
+    if len(lib) >= MAX_LIBRARY:
+        return False
+    lib.append(_entry(t[0], category, on))
+    return True
+
+
+def form_library(form) -> list:
+    """The /settings library editor as posted: four parallel lists, in order;
+    a row with blank text is dropped."""
+    ids, texts = form.getlist(LIB_ID), form.getlist(LIB_TEXT)
+    cats, ons = form.getlist(LIB_CAT), form.getlist(LIB_ON)
+    out = []
+    for i, t in enumerate(texts):
+        out.append({"id": ids[i] if i < len(ids) else "", "text": t,
+                    "category": cats[i] if i < len(cats) else FALLBACK_CATEGORY,
+                    "on": (ons[i] if i < len(ons) else "") == "1"})
+    return out
 
 
 def default_terms() -> list:
-    """A COPY of the current default list, for a document being created."""
+    """A COPY of the library's ON-by-default terms, in library order, for a
+    document being created."""
     return list(settings_of()["terms"])
+
+
+# =============================================================================
+# THE PAYMENT WARNING (never blocks, never prints)
+# =============================================================================
+
+PAY_WORDS = ("payment", "advance", "retention", "running bill")
+_PCT = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+
+
+def _payment_library_texts() -> set:
+    return {e["text"] for e in library() if e["category"] == "Payment"}
+
+
+def is_payment_term(text: str, pay_lib=None) -> bool:
+    t = " ".join(str(text or "").split())
+    pay_lib = _payment_library_texts() if pay_lib is None else pay_lib
+    return t in pay_lib or any(w in t.lower() for w in PAY_WORDS)
+
+
+def payment_total(terms, pay_lib=None):
+    """The sum of the percentages in the payment lines, or None when no
+    payment line carries one."""
+    pay_lib = _payment_library_texts() if pay_lib is None else pay_lib
+    total, seen = 0.0, False
+    for t in terms or []:
+        if is_payment_term(t, pay_lib):
+            for m in _PCT.finditer(str(t)):
+                total += float(m.group(1))
+                seen = True
+    return round(total, 2) if seen else None
+
+
+def payment_warning(terms, pay_lib=None) -> str:
+    """"Payment terms add up to N%." when the payment percentages are present
+    and do not come to 100; "" otherwise."""
+    n = payment_total(terms, pay_lib)
+    if n is None or abs(n - 100.0) < 0.005:
+        return ""
+    return f"Payment terms add up to {n:g}%."
+
+
+PAY_NOTE_STYLE = ("background:#fffbeb;border:1px solid #fcd34d;border-left:3px solid "
+                  "#d97706;border-radius:6px;padding:.35rem .6rem;font-size:.8rem;"
+                  "color:#78350f;")
+
+
+def payment_note_html(terms) -> str:
+    """The amber note for a print page's action bar: screen only, "" when the
+    payment percentages come to 100 or there are none."""
+    w = payment_warning(terms)
+    if not w:
+        return ""
+    return (f'<span class="no-print ps-pay-bar" role="note" '
+            f'style="{PAY_NOTE_STYLE}align-self:center;">&#9888; {P.esc(w)}</span>')
 
 
 # =============================================================================
@@ -192,16 +386,74 @@ def form_terms(form, legacy) -> list:
     return clean_terms(form.getlist(FIELD_TERM))
 
 
-def apply_form(doc: dict, form, creating: bool) -> None:
+def form_section_args(form, legacy_terms: list) -> tuple:
+    """`(terms, save_cats)` for a refused POST's re-render: what was posted,
+    in order, with each row's "save to library" category kept; or
+    `(legacy_terms, [])` from a form without the editor."""
+    if form is None or form.get(MARK_TERMS) is None:
+        return list(legacy_terms or []), []
+    pairs = form_term_pairs(form)
+    return [t for t, _c in pairs], [c for _t, c in pairs]
+
+
+def form_term_pairs(form) -> list:
+    """`[(text, save_category)]` as posted, in order, blanks dropped.
+    `save_category` is a category when the row was added with "Also save to
+    library" ticked, else ""."""
+    texts, libs = form.getlist(FIELD_TERM), form.getlist(FIELD_TERM_LIB)
+    out = []
+    for i, t in enumerate(texts):
+        c = clean_terms([t])
+        if c:
+            out.append((c[0], libs[i] if i < len(libs) else ""))
+    return out[:MAX_TERMS]
+
+
+def apply_form(doc: dict, form, creating: bool, may_save_library: bool = False) -> None:
     """Write the tick and the terms from a document's own form onto `doc`.
-    On create the terms default to a copy of /settings; on edit to what the
-    record holds."""
+    On create the terms default to a copy of the library's ON-by-default set;
+    on edit to what the record holds. A term posted with a save category is
+    added to the library (OFF by default) only when `may_save_library`, which
+    the caller answers from the /settings permission."""
     doc[FIELD_ON] = form_on(form, legacy=is_on(doc))
-    legacy = default_terms() if creating else (
-        terms_of(doc) if has_terms(doc) else None)
-    if legacy is None and (form is None or form.get(MARK_TERMS) is None):
-        return            # an old record edited by a form without the editor
-    doc[FIELD_TERMS] = form_terms(form, legacy or [])
+    if form is not None and form.get(MARK_TERMS) is not None:
+        pairs = form_term_pairs(form)
+        doc[FIELD_TERMS] = [t for t, _c in pairs]
+        if may_save_library:
+            for t, c in pairs:
+                if c in CATEGORIES:
+                    library_add(t, c, on=False)
+    elif creating:
+        doc[FIELD_TERMS] = default_terms()
+
+
+def _terms_text(doc) -> str:
+    if not has_terms(doc):
+        return ""
+    return "\n".join(f"{i + 1}. {t}" for i, t in enumerate(terms_of(doc))) or "(no terms)"
+
+
+def log_changes(before: dict, after: dict) -> list:
+    """`[(label, was, now)]` for `editlog.record()`: the tick, the terms list
+    (numbered, before and after) and the quotation's two summary texts."""
+    out = []
+    if is_on(before) != is_on(after):
+        out.append(("Price summary page", "Yes" if is_on(before) else "No",
+                     "Yes" if is_on(after) else "No"))
+    if _terms_text(before) != _terms_text(after):
+        out.append(("Summary terms", _terms_text(before), _terms_text(after)))
+    for k, label in ((FIELD_SUBJECT, "Summary subject line"),
+                     (FIELD_SYSTEM, "System description (summary row)")):
+        was, now = str(before.get(k) or ""), str(after.get(k) or "")
+        if was != now:
+            out.append((label, was, now))
+    return out
+
+
+def orientation_change(doc: dict, new: str, default: str) -> list:
+    """The one log entry the print page's switch writes, or [] for no change."""
+    was = orientation_of(doc, default)
+    return [] if was == new else [("Print orientation", was.capitalize(), new.capitalize())]
 
 
 # =============================================================================
@@ -216,70 +468,252 @@ EDITOR_CSS = """
               padding-top:.45rem; text-align:right; font-size:.8rem; }
   .ps-ed-row textarea { flex:1 1 auto; min-height:2.4rem; resize:vertical;
                         font-size:.85rem; }
+  .ps-ed-row select { flex:0 0 9rem; font-size:.8rem; }
+  .ps-ed-on { flex:0 0 auto; font-size:.75rem; white-space:nowrap; padding-top:.45rem;
+              display:flex; gap:.25rem; align-items:center; }
   .ps-ed-btn { font-size:.75rem; padding:.3rem .5rem; border-radius:6px;
                border:1px solid var(--border, #e2e8f0); background:#fff; cursor:pointer; }
   .ps-ed-btn:hover { background:#eef2ff; }
+  .ps-ed-add { display:flex; gap:.4rem; align-items:flex-start; flex-wrap:wrap;
+               margin-top:.6rem; padding-top:.6rem; border-top:1px dashed var(--border, #e2e8f0); }
+  .ps-ed-add select { flex:1 1 18rem; max-width:100%; font-size:.8rem; }
+  .ps-ed-add textarea { flex:1 1 18rem; min-height:2.4rem; font-size:.85rem; }
+  .ps-ed-add label { font-size:.78rem; display:flex; gap:.3rem; align-items:center; }
+  .ps-ed-hint { font-size:.78rem; color:var(--muted, #64748b); margin:.1rem 0 .4rem; }
+  .ps-pay-note { margin:.2rem 0 .5rem; padding:.35rem .6rem; font-size:.8rem;
+                 background:#fffbeb; border:1px solid #fcd34d; border-left:3px solid #d97706;
+                 border-radius:6px; color:#78350f; }
+  @media print { .ps-pay-note, .ps-pay-bar { display:none !important; } }
 </style>
 """
 
-# Plain string, interpolated as a value: nothing in it needs doubling.
+# Plain string, interpolated as a value: nothing in it needs doubling. ONE
+# <script> for the document editor (psEd), the library editor (psLib) and the
+# live payment note (psPay).
 EDITOR_JS = """
 <script>
 (function () {
   if (window.psEd) return;
+  var WORDS = ['payment', 'advance', 'retention', 'running bill'];
+  function each(list, fn) { Array.prototype.forEach.call(list, fn); }
   function renum(box) {
-    var rows = box.querySelectorAll('.ps-ed-row');
+    var rows = box.querySelectorAll('.ps-ed-list > .ps-ed-row');
     for (var i = 0; i < rows.length; i++) {
       rows[i].querySelector('.ps-ed-no').textContent = (i + 1) + '.';
     }
+    psPay(box);
   }
-  window.psEd = function (btn, act) {
+  function payLib(box) {
+    var t = box.querySelector('template.ps-pay-lib');
+    if (!t) return [];
+    return Array.prototype.map.call(t.content.querySelectorAll('i'),
+                                    function (e) { return e.textContent; });
+  }
+  window.psPay = function (box) {
+    var note = box.querySelector('.ps-pay-note');
+    if (!note) return;
+    var lib = payLib(box), total = 0, seen = false;
+    each(box.querySelectorAll('.ps-ed-list > .ps-ed-row'), function (row) {
+      var ta = row.querySelector('textarea');
+      var t = ta.value.replace(/\\s+/g, ' ').trim();
+      if (!t) return;
+      var cat = row.querySelector('select.ps-lib-cat');
+      var on = row.querySelector('input.ps-lib-on');
+      if (on && on.value !== '1') return;
+      var low = t.toLowerCase();
+      var pay = (cat ? cat.value === 'Payment' : lib.indexOf(t) >= 0) ||
+                WORDS.some(function (w) { return low.indexOf(w) >= 0; });
+      if (!pay) return;
+      var m, re = /(\\d+(?:\\.\\d+)?)\\s*%/g;
+      while ((m = re.exec(t))) { total += parseFloat(m[1]); seen = true; }
+    });
+    total = Math.round(total * 100) / 100;
+    if (seen && total !== 100) {
+      note.textContent = '\\u26A0 Payment terms add up to ' + total + '%.';
+      note.hidden = false;
+    } else {
+      note.hidden = true;
+    }
+  };
+  function addRow(box, text, cat) {
+    var tpl = box.querySelector('template.ps-row-tpl');
+    var frag = tpl.content.cloneNode(true);
+    frag.querySelector('textarea').value = text;
+    var flag = frag.querySelector('input.ps-lib-flag');
+    if (flag) flag.value = cat || '';
+    box.querySelector('.ps-ed-list').appendChild(frag);
+  }
+  function move(btn, act) {
     var row = btn.closest('.ps-ed-row');
-    var box = btn.closest('.ps-ed');
-    if (act === 'add') {
-      var tpl = box.querySelector('template');
-      var list = box.querySelector('.ps-ed-list');
-      list.appendChild(tpl.content.cloneNode(true));
-      var all = list.querySelectorAll('textarea');
-      if (all.length) all[all.length - 1].focus();
-    } else if (act === 'del') {
+    if (act === 'del') {
       row.parentNode.removeChild(row);
     } else if (act === 'up' && row.previousElementSibling) {
       row.parentNode.insertBefore(row, row.previousElementSibling);
     } else if (act === 'down' && row.nextElementSibling) {
       row.parentNode.insertBefore(row.nextElementSibling, row);
     }
+  }
+  window.psEd = function (btn, act) {
+    var box = btn.closest('.ps-ed');
+    if (act === 'lib') {
+      var sel = box.querySelector('select.ps-lib-pick');
+      var o = sel.options[sel.selectedIndex];
+      if (!o || !o.value) return;
+      addRow(box, o.value, '');
+      o.parentNode.removeChild(o);
+      sel.selectedIndex = 0;
+    } else if (act === 'own') {
+      var ta = box.querySelector('textarea.ps-own-text');
+      var t = ta.value.trim();
+      if (!t) return;
+      var sv = box.querySelector('input.ps-own-save');
+      var cs = box.querySelector('select.ps-own-cat');
+      addRow(box, t, (sv && sv.checked && cs) ? cs.value : '');
+      ta.value = '';
+      if (sv) sv.checked = false;
+    } else if (act === 'new') {
+      addRow(box, '', '');
+    } else {
+      move(btn, act);
+    }
     renum(box);
   };
+  window.psLibOn = function (cb) {
+    cb.parentNode.querySelector('input.ps-lib-on').value = cb.checked ? '1' : '0';
+    psPay(cb.closest('.ps-ed'));
+  };
+  document.addEventListener('input', function (e) {
+    var b = e.target.closest && e.target.closest('.ps-ed');
+    if (b) psPay(b);
+  });
+  document.addEventListener('change', function (e) {
+    var b = e.target.closest && e.target.closest('.ps-ed');
+    if (b) psPay(b);
+  });
 })();
 </script>
 """
 
 
-def _editor_row(i: int, text: str) -> str:
-    return (f'<div class="ps-ed-row"><span class="ps-ed-no">{i}.</span>'
-            f'<textarea name="{FIELD_TERM}" rows="2">{P.esc(text)}</textarea>'
-            f'<button type="button" class="ps-ed-btn" title="Move up" '
+def _btns() -> str:
+    return (f'<button type="button" class="ps-ed-btn" title="Move up" '
             f'onclick="psEd(this,&#39;up&#39;)">&#8593;</button>'
             f'<button type="button" class="ps-ed-btn" title="Move down" '
             f'onclick="psEd(this,&#39;down&#39;)">&#8595;</button>'
             f'<button type="button" class="ps-ed-btn" title="Remove" '
-            f'onclick="psEd(this,&#39;del&#39;)">&#10005;</button></div>')
+            f'onclick="psEd(this,&#39;del&#39;)">&#10005;</button>')
 
 
-def editor_html(terms: list, label: str = "Terms &amp; Conditions") -> str:
-    """An ordered, editable list: add, remove, move up, move down. Posts one
-    `summary_term` per row, in order, with a marker so an emptied list is told
-    apart from a form that never offered the editor. No `{` or `}` in the
-    markup, so it can sit in an f-string or a `.format()` page as a value."""
-    rows = "".join(_editor_row(i + 1, t) for i, t in enumerate(terms or []))
+def _editor_row(i: int, text: str, save_cat: str = "") -> str:
+    return (f'<div class="ps-ed-row"><span class="ps-ed-no">{i}.</span>'
+            f'<textarea name="{FIELD_TERM}" rows="2">{P.esc(text)}</textarea>'
+            f'<input type="hidden" class="ps-lib-flag" name="{FIELD_TERM_LIB}" '
+            f'value="{P.esc(save_cat)}"/>{_btns()}</div>')
+
+
+def _cat_options(current: str) -> str:
+    return "".join(f'<option value="{c}"{" selected" if c == current else ""}>{c}</option>'
+                   for c in CATEGORIES)
+
+
+def _pay_note(warning: str) -> str:
+    hidden = "" if warning else " hidden"
+    return (f'<div class="ps-pay-note" role="note"{hidden}>'
+            f'{"&#9888; " + P.esc(warning) if warning else ""}</div>')
+
+
+def _pay_lib_template(lib: list) -> str:
+    return ('<template class="ps-pay-lib">'
+            + "".join(f"<i>{P.esc(e['text'])}</i>" for e in lib if e["category"] == "Payment")
+            + "</template>")
+
+
+def editor_html(terms: list, label: str = "Terms &amp; Conditions",
+                may_save_library: bool = False, hint: str = "",
+                save_cats: list = None) -> str:
+    """
+    A document's OWN terms (26 Nov 2026, §0 ninety-first block): the stored
+    list (edit, remove, move up, move down), then **Add from library** (a
+    picker of library terms not already on the document, grouped by
+    category) and **Add your own term** (free text; "Also save to library"
+    only when `may_save_library`). The amber payment note is screen only.
+    Posts one `summary_term` (and a parallel `summary_term_lib`) per row, in
+    order, with a marker so an emptied list is told apart from a form that
+    never offered the editor. No `{` or `}` in the markup.
+    """
+    lib = library()
+    terms = list(terms or [])
+    on_doc = set(terms)
+    save_cats = list(save_cats or [])
+    rows = "".join(_editor_row(i + 1, t, (save_cats[i] if i < len(save_cats) else "")
+                               if may_save_library else "")
+                   for i, t in enumerate(terms))
+    groups = ""
+    for c in CATEGORIES:
+        opts = "".join(
+            f'<option value="{P.esc(e["text"])}">'
+            f'{P.esc(e["text"] if len(e["text"]) <= 110 else e["text"][:107] + "...")}</option>'
+            for e in lib if e["category"] == c and e["text"] not in on_doc)
+        if opts:
+            groups += f'<optgroup label="{c}">{opts}</optgroup>'
+    save = ""
+    if may_save_library:
+        save = (f'<label><input type="checkbox" class="ps-own-save"/> Also save to library</label>'
+                f'<select class="ps-own-cat" aria-label="Library category">'
+                f'{_cat_options(FALLBACK_CATEGORY)}</select>')
+    hint_html = f'<div class="ps-ed-hint">{hint}</div>' if hint else ""
     return (f'{EDITOR_CSS}<div class="form-group ps-ed">'
             f'<input type="hidden" name="{MARK_TERMS}" value="1"/>'
-            f'<label>{label}</label>'
+            f'<label>{label}</label>{hint_html}'
+            f'{_pay_note(payment_warning(terms))}'
             f'<div class="ps-ed-list">{rows}</div>'
-            f'<template>{_editor_row(0, "")}</template>'
-            f'<button type="button" class="ps-ed-btn" onclick="psEd(this,&#39;add&#39;)">'
-            f'+ Add a term</button></div>{EDITOR_JS}')
+            f'<template class="ps-row-tpl">{_editor_row(0, "")}</template>'
+            f'{_pay_lib_template(lib)}'
+            f'<div class="ps-ed-add">'
+            f'<select class="ps-lib-pick" aria-label="Add from library">'
+            f'<option value="">Add from library...</option>{groups}</select>'
+            f'<button type="button" class="ps-ed-btn" onclick="psEd(this,&#39;lib&#39;)">'
+            f'+ Add</button></div>'
+            f'<div class="ps-ed-add">'
+            f'<textarea class="ps-own-text" rows="2" placeholder="Add your own term"></textarea>'
+            f'{save}<button type="button" class="ps-ed-btn" onclick="psEd(this,&#39;own&#39;)">'
+            f'+ Add your own term</button></div>'
+            f'</div>{EDITOR_JS}')
+
+
+def _library_row(i: int, e: dict) -> str:
+    checked = " checked" if e.get("on") else ""
+    return (f'<div class="ps-ed-row"><span class="ps-ed-no">{i}.</span>'
+            f'<input type="hidden" name="{LIB_ID}" value="{P.esc(e.get("id", ""))}"/>'
+            f'<textarea name="{LIB_TEXT}" rows="2">{P.esc(e.get("text", ""))}</textarea>'
+            f'<select name="{LIB_CAT}" class="ps-lib-cat" aria-label="Category">'
+            f'{_cat_options(e.get("category") or FALLBACK_CATEGORY)}</select>'
+            f'<label class="ps-ed-on"><input type="checkbox" onchange="psLibOn(this)"{checked}/>'
+            f'<input type="hidden" class="ps-lib-on" name="{LIB_ON}" '
+            f'value="{"1" if e.get("on") else "0"}"/> On by default</label>{_btns()}</div>')
+
+
+def library_editor_html(entries: list) -> str:
+    """The /settings TERMS LIBRARY: every term's text, category and "on by
+    default" tick, in order; add, edit, delete, reorder, recategorise. The
+    amber note is for the ON-by-default set (screen only)."""
+    entries = list(entries or [])
+    pay = {e["text"] for e in entries if e.get("category") == "Payment"}
+    warning = payment_warning([e["text"] for e in entries if e.get("on")], pay)
+    rows = "".join(_library_row(i + 1, e) for i, e in enumerate(entries))
+    blank = {"id": "", "text": "", "category": FALLBACK_CATEGORY, "on": False}
+    return (f'{EDITOR_CSS}<div class="form-group ps-ed ps-lib">'
+            f'<input type="hidden" name="{MARK_LIB}" value="1"/>'
+            f'<label>Terms library</label>'
+            f'<div class="ps-ed-hint">Ticked terms are where every new BOQ and '
+            f'quotation starts; the rest are offered under Add from library on the '
+            f'document. Editing or deleting a term here never changes a document '
+            f'already raised.</div>'
+            f'{_pay_note(warning)}'
+            f'<div class="ps-ed-list">{rows}</div>'
+            f'<template class="ps-row-tpl">{_library_row(0, blank)}</template>'
+            f'<button type="button" class="ps-ed-btn" onclick="psEd(this,&#39;new&#39;)">'
+            f'+ Add a library term</button></div>{EDITOR_JS}')
 
 
 def checkbox_html(on: bool) -> str:
@@ -328,12 +762,18 @@ def form_text(form, name: str, legacy: str = "") -> str:
     return " ".join(str(form.get(name) or "").split())[:MAX_TEXT_CHARS]
 
 
-def form_section_html(on: bool, terms: list, extra: str = "") -> str:
+QUOTE_TERMS_HINT = "With the price summary page on, these are the only terms printed."
+
+
+def form_section_html(on: bool, terms: list, extra: str = "",
+                      may_save_library: bool = False, hint: str = "",
+                      save_cats: list = None) -> str:
     """The whole block a document form draws: the tick, any extra fields the
     caller passes (already escaped), and the terms editor."""
     return (f'<div class="form-section"><div class="section-title">'
             f'&#128209;&nbsp; Price Summary Page</div>'
-            f'{checkbox_html(on)}{extra}{editor_html(terms)}</div>')
+            f'{checkbox_html(on)}{extra}'
+            f'{editor_html(terms, may_save_library=may_save_library, hint=hint, save_cats=save_cats)}</div>')
 
 
 # =============================================================================
@@ -383,7 +823,8 @@ SUMMARY_CSS = """
 
 
 def summary_html(*, title: str, to_name: str, subject: str, heads: list,
-                 rows: list, totals: list, tax_line: str, terms: list) -> str:
+                 rows: list, totals: list, tax_line: str, terms: list,
+                 notes: list = None) -> str:
     """
     The cover, as one block for the top of the page frame's <tbody>.
 
@@ -394,6 +835,9 @@ def summary_html(*, title: str, to_name: str, subject: str, heads: list,
              None is drawn empty.
     `tax_line` "" when the document already prints its tax (the quotation
              with GST): the tax is then one of `totals`, never this band.
+    `notes`  `(label, value)` lines under the numbered terms, only the filled
+             ones (the quotation's own delivery / dispatch / validity, 26 Nov
+             2026). Styled on the element, so no stylesheet moves.
 
     Every text argument is RAW and escaped here; every amount is already
     formatted by the chain and contains only digits, commas, a point and a
@@ -423,10 +867,16 @@ def summary_html(*, title: str, to_name: str, subject: str, heads: list,
         items = "".join(f"<li>{P.esc(t)}</li>" for t in terms)
         terms_html = (f'<div class="ps-terms"><div class="ps-terms-h">'
                       f'Terms &amp; Condition :-</div><ol>{items}</ol></div>')
+    notes_html = ""
+    filled = [(lb, v) for lb, v in (notes or []) if str(v or "").strip()]
+    if filled:
+        notes_html = ('<div class="ps-notes" style="margin-top:2mm;font-size:var(--fs-sm);">'
+                      + "".join(f'<div><b>{P.esc(lb)}:</b> {P.esc(v)}</div>'
+                                for lb, v in filled) + "</div>")
     return (f'\n<div class="ps-cover">'
             f'<div class="ps-title">{P.esc(title)}</div>{to_html}{subj}'
             f'<table class="ps-table">{cols}<thead>{th}</thead>'
-            f'<tbody>{body}</tbody></table>{band}{terms_html}</div>\n')
+            f'<tbody>{body}</tbody></table>{band}{terms_html}{notes_html}</div>\n')
 
 
 def section_letter(i: int) -> str:

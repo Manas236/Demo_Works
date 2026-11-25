@@ -229,7 +229,9 @@ Fast facts so you don't get it wrong before reading:
   2026, CLIENT_CHANGES.md §0 ninetieth block), laid out by the leaf
   **`pricesummary.py`** (store + pipeline only) and fed each chain's OWN
   figures; it computes no money. ⚠ **A document prints its own
-  `summary_terms`, never the live `/settings` list** — copied at create,
+  `summary_terms`, never the live `/settings` TERMS LIBRARY** (categories,
+  On-by-default ticks; 26 Nov 2026, §0 ninety-first block) — the ticked terms
+  copied at create, more added per document from the library or typed,
   `tools/backfill_terms.py` for the existing set (dry run by default; runs at
   deploy). `price_summary_on` absent is ON; `print_orientation` absent is the
   document's own page (BOQ landscape, quotation portrait), and a portrait BOQ

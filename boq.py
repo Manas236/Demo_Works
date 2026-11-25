@@ -356,6 +356,13 @@ def _may_set_number() -> bool:
     return _AUTH.has_perm("docnum.override")
 
 
+def _may_edit_settings() -> bool:
+    """May this user edit /settings, and so save a term to the terms library
+    from a BOQ form (26 Nov 2026)? The registry's own answer."""
+    import auth as _A
+    return _A.can_reach("settings.edit_settings")
+
+
 def _actor_id() -> str:
     """The id of whoever is saving — never their display name (gap 41)."""
     import auth as _AUTH
@@ -4214,6 +4221,10 @@ def print_boq(id: str):
     switch   = PS.orientation_toolbar(
         url_for("boq.set_print_orientation", id=id), orient,
         _AUTH.can_reach("boq.set_print_orientation"))
+    # The amber payment note (26 Nov 2026): screen only, and only when the
+    # cover prints the terms it adds up.
+    if cover:
+        switch = PS.payment_note_html(PS.terms_of(boq)) + switch
 
     template = f"""<!DOCTYPE html><html lang="en">
 <head>
@@ -4263,6 +4274,8 @@ def set_print_orientation(id: str):
         return redirect(url_for("boq.list_boqs", msg="BOQ not found.", type="error"))
     v = PS.orientation_value(request.form.get(PS.FIELD_ORIENT))
     if v:
+        import editlog as _EL
+        _EL.record(boq, PS.orientation_change(boq, v, PS.LANDSCAPE), _actor_id())
         boq[PS.FIELD_ORIENT] = v
     return redirect(url_for("boq.print_boq", id=id))
 
@@ -6756,7 +6769,8 @@ def create_boq(imported: dict = None, editing: dict = None):
             editing["subtotal"] = tot
             editing[RO.FIELD] = RO.form_choice(form, legacy=RO.is_on(editing, False))
             import pricesummary as _PS
-            _PS.apply_form(editing, form, creating=False)
+            _PS.apply_form(editing, form, creating=False,
+                           may_save_library=_may_edit_settings())
             _t, editing["round_off"], _g = grand_of(editing)
             if _new_ref != str(before.get("ref") or ""):
                 # The root renumbered: every revision of it follows (`<root>/N`).
@@ -6770,7 +6784,9 @@ def create_boq(imported: dict = None, editing: dict = None):
                         b["ref"] = _new_ref + r_[len(old_ref):]
             changes = (_EL.diff(before, editing, BOQ_EDIT_FIELDS)
                        + _EL.line_diff(_boq_log_lines(before_lines),
-                                       _boq_log_lines(editing["line_items"])))
+                                       _boq_log_lines(editing["line_items"]))
+                       # the summary tick and the BOQ's own terms (26 Nov 2026)
+                       + _PS.log_changes(before, editing))
             _EL.record(editing, changes, _actor_id())
             learn_into_library(editing)
             n = len(changes)
@@ -6999,7 +7015,8 @@ def create_boq(imported: dict = None, editing: dict = None):
             # The price summary tick and the terms SNAPSHOT (25 Nov 2026): a
             # form without the editor (an import, a script) copies /settings.
             import pricesummary as _PS
-            _PS.apply_form(boq, form, creating=True)
+            _PS.apply_form(boq, form, creating=True,
+                           may_save_library=_may_edit_settings())
 
             STORE["boqs"][bid] = boq
             if _typed_n:
@@ -7303,16 +7320,19 @@ def create_boq(imported: dict = None, editing: dict = None):
     # BOQ a revision is raised from; else a COPY of the /settings default.
     import pricesummary as PS
     _ps_src = editing if editing is not None else revise_src
+    _ps_cats = []
     if request.method == "POST":
         _ps_on = PS.form_on(request.form, True)
-        _ps_terms = PS.form_terms(request.form, PS.default_terms())
+        _ps_terms, _ps_cats = PS.form_section_args(request.form, PS.default_terms())
     elif _ps_src is not None:
         _ps_on = PS.is_on(_ps_src)
         _ps_terms = (PS.terms_of(_ps_src) if PS.has_terms(_ps_src)
                      else PS.default_terms())
     else:
         _ps_on, _ps_terms = True, PS.default_terms()
-    _ps_section = PS.form_section_html(_ps_on, _ps_terms)
+    _ps_section = PS.form_section_html(_ps_on, _ps_terms,
+                                       may_save_library=_may_edit_settings(),
+                                       save_cats=_ps_cats)
 
     template = f"""<!DOCTYPE html><html lang="en">
 <head>

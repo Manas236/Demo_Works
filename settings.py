@@ -1244,7 +1244,9 @@ def edit_settings():
         import pricesummary as _PS
         ps_values = {"title": _PS.form_text(request.form, "ps_title", ""),
                      "tax_line": _PS.form_text(request.form, "ps_tax_line", ""),
-                     "terms": _PS.form_terms(request.form, _PS.settings_of()["terms"])}
+                     "library": (_PS.form_library(request.form)
+                                 if request.form.get(_PS.MARK_LIB) is not None
+                                 else _PS.library())}
         if not error:
             save_po_series(po_data["prefix"], po_data["next_no"])
             save_dc_series(dc_data["prefix"], dc_data["next_no"])
@@ -1257,9 +1259,9 @@ def edit_settings():
             save_labour_settings(lb_data["ot_multiplier"])
             # Only from a form that offered the section, so a POST without it
             # (an older page, a script) leaves the record as it is.
-            if request.form.get(_PS.MARK_TERMS) is not None:
+            if request.form.get(_PS.MARK_LIB) is not None:
                 _PS.save_settings(ps_values["title"], ps_values["tax_line"],
-                                  ps_values["terms"])
+                                  ps_values["library"])
             # Store only what differs from the default, so a later change to
             # branding.py still reaches anyone who never overrode that field.
             overrides = {k: v for k, v in data.items()
@@ -1302,10 +1304,11 @@ def edit_settings():
         sf_values = {s.key: (str(f) if f else "")
                      for s, _sc, f, _mx, _nx in series_floor_rows()}
         import pricesummary as _PS
+        _PS.ensure_seeded()
         _rec = STORE["settings"].get(_PS.RECORD) or {}
-        ps_values = {"title": str(_rec.get("title") or "") if _rec else _PS.DEFAULT_TITLE,
-                     "tax_line": str(_rec.get("tax_line") or "") if _rec else _PS.DEFAULT_TAX_LINE,
-                     "terms": _PS.settings_of()["terms"]}
+        ps_values = {"title": str(_rec.get("title") or ""),
+                     "tax_line": str(_rec.get("tax_line") or ""),
+                     "library": _PS.library()}
 
     msg      = request.args.get("msg")
     msg_type = request.args.get("type", "success")
@@ -1637,11 +1640,13 @@ def edit_settings():
           <div class="section-title">Price Summary Page &middot; BOQ and Quotation</div>
           <p class="fld-hint" style="margin:-.5rem 0 1rem;">
             The one-page price summary printed before a <b>BOQ</b> and a
-            <b>quotation</b>. The terms below are the <b>default</b>: a new BOQ
-            or quotation takes a <b>copy</b> of them when it is created, and
-            that copy is then edited on the document itself. Changing this list
-            changes no document already raised. Leave the title or the tax line
-            blank to print the built-in wording.
+            <b>quotation</b>. The terms below are a <b>library</b>: a new BOQ
+            or quotation takes a <b>copy</b> of the terms ticked <i>On by
+            default</i> when it is created, and any other library term can be
+            added on the document itself. Changing the library changes no
+            document already raised. Leave the title or the tax line blank to
+            print the built-in wording. Changes to this library are not logged:
+            this page keeps no edit log.
           </p>
           <div class="fg2">
             <div class="form-group">
@@ -1657,7 +1662,7 @@ def edit_settings():
                      placeholder="{P.esc(_PS.DEFAULT_TAX_LINE)}"/>
             </div>
           </div>
-          {_PS.editor_html(ps_values.get("terms") or [], "Default Terms &amp; Conditions")}
+          {_PS.library_editor_html(ps_values.get("library") or [])}
         </div>
 
         <div class="set-actions">

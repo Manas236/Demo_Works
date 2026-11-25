@@ -1512,7 +1512,9 @@ cover looks the same on both:
 | What | Where |
 |---|---|
 | the cover's layout, `summary_html()`, and `SUMMARY_CSS` | here — fed **finished, formatted figures** by each chain, so it computes no subtotal, tax or round off |
-| the `/settings` record `STORE["settings"]["price_summary"]` — title, tax line, the ONE default terms list | read here (`settings_of()`, `ensure_seeded()`, `save_settings()`); the page that edits it is `settings.py` |
+| the `/settings` record `STORE["settings"]["price_summary"]` — title, tax line and, from 26 Nov 2026, the **TERMS LIBRARY** (below) | read here (`settings_of()`, `library()`, `ensure_seeded()`, `save_settings()`, `library_add()`); the page that edits it is `settings.py` |
+| the payment warning — "Payment terms add up to N%." | `payment_total()`, `payment_warning()`, `payment_note_html()`; screen only, never blocks |
+| the edit-log entries for the summary fields | `log_changes()`, `orientation_change()`, fed to `editlog.record()` by each chain |
 | the form widgets — the tick, the ordered terms editor (add / remove / up / down), the quotation's two text boxes | `checkbox_html()`, `editor_html()`, `text_fields_html()`, `form_section_html()` |
 | the per-document readers and form parsers | `is_on()`, `terms_of()`, `has_terms()`, `orientation_of()`, `form_on()`, `form_terms()`, `form_text()`, `apply_form()` |
 | the screen-only Portrait / Landscape switch | `orientation_toolbar()` |
@@ -1527,6 +1529,50 @@ arrows. The arithmetic stays in each chain — `boq._summary_cover()` reads
 the record's own `subtotal` / `tax_info` / `round_off` / `grand_total` — which
 is `docsheet.py`'s rule for its totals rows, and what makes the cover match
 the detail to the paisa.
+
+#### The TERMS LIBRARY (26 November 2026, §0 ninety-first block)
+
+Yogesh, 25 Nov: add these terms, plus any others there are or you know of,
+and keep a place to add more. The single default list became a library:
+
+```
+STORE["settings"]["price_summary"] = {
+    "title": "...", "tax_line": "...",
+    "library": [{"id": "term-01", "text": "...", "category": "Scope", "on": True}, ...],
+    "extras_seeded": True,
+    "legacy_terms": [...],      # only on a record migrated from the 25 Nov shape
+}
+```
+
+* **Categories** are `CATEGORIES`: Scope, Exclusions, Site, Payment, Taxes,
+  Commercial, Delivery, Warranty, Legal. An unknown one reads as Commercial.
+* **Migration** (`ensure_seeded()`, idempotent): the 25 Nov flat `terms`
+  list becomes the library as it stands, every term ON, each in its seed
+  category when its text is a seed term exactly, else Commercial, so the
+  unedited seed is exactly the eleven in `SEED_CATEGORIES` and an edited list
+  loses nothing (kept as `legacy_terms` too). The seventeen `EXTRA_TERMS` are
+  appended OFF by default once; `extras_seeded` stops a deleted one coming
+  back. Seeded and migrated ids are stable (`term-01`, `extra-01`); new terms
+  get a uuid.
+* **A new document** copies the ON-by-default terms in library order
+  (`default_terms()`); a BOQ revision keeps its predecessor's list.
+* **On every BOQ and quotation form** (create, edit, revision) the editor
+  shows the document's own list (edit, remove, reorder) plus **Add from
+  library** (terms not already on it, grouped by category) and **Add your own
+  term**. "Also save to library" shows only to a user who can reach
+  `settings.edit_settings`, and the server checks the same thing
+  (`may_save_library`); a term saved so lands OFF by default in the chosen
+  category. Posted as `summary_term` with a parallel `summary_term_lib`.
+* **The snapshot rule is unchanged**: a document prints its own list, and no
+  library edit or delete moves it.
+* **The payment warning**: the percentages in a list's payment lines (a line
+  matching a Payment library term, or containing "payment", "advance",
+  "retention" or "running bill"; in /settings, a Payment-category term) are
+  summed; not 100 gives an amber "Payment terms add up to N%." on the form
+  (live, `psPay`), on the print page's action bar (only when the cover prints
+  the terms) and in /settings for the ON set. It never blocks and never
+  prints. The client's own seed adds up to **150%**, kept verbatim because
+  Yogesh has not said otherwise.
 
 ### 2k. `chrome.py` — the app shell, and why it is the fourth leaf (14 September 2026)
 
@@ -2595,7 +2641,7 @@ helper each in `pricesummary.py`, and none backfilled except the terms:
 | key | on | absent means | written by |
 |---|---|---|---|
 | `price_summary_on` | BOQ, quotation | **ON** — every document raised before has the cover | the create and edit forms' tick (`pricesummary.apply_form()`) |
-| `summary_terms` | BOQ, quotation | no terms stored; the cover prints none | COPIED from `/settings` at create; edited on the document's own form; `tools/backfill_terms.py` for the existing set |
+| `summary_terms` | BOQ, quotation | no terms stored; the cover prints none | COPIED from the library's ON-by-default terms at create; edited on the document's own form (with Add from library / Add your own term); `tools/backfill_terms.py` for the existing set |
 | `print_orientation` | BOQ, quotation | the document's own page: **BOQ `landscape`, quotation `portrait`** | the switch on the print page only (`POST …/print/<id>/orientation`) |
 | `summary_subject`, `summary_system` | quotation | the cover derives them (`pricesummary.quote_defaults()`) | the quotation's create (library mode) and edit forms |
 
@@ -2605,8 +2651,15 @@ document already raised. An **empty list is a choice** (somebody removed every
 term) and is never refilled — the backfill tests `has_terms()`, the key, not
 its length.
 
-⚠ **`tools/backfill_terms.py`** copies the current default into every BOQ and
-quotation that LACKS the key. Dry run by default, `--write` to apply,
+⚠ **Edits are logged** (26 Nov 2026): a change to `price_summary_on`,
+`summary_terms` (numbered, before and after), `summary_subject`,
+`summary_system`, and `print_orientation` from the print page's switch, each
+write an `editlog` entry with who and when, through `pricesummary.log_changes()`
+/ `orientation_change()`. The /settings library is **not** logged: that page
+keeps no edit log of any kind, and none was invented.
+
+⚠ **`tools/backfill_terms.py`** copies the library's ON-by-default terms into
+every BOQ and quotation that LACKS the key. Dry run by default, `--write` to apply,
 idempotent; it was **not** run with `--write` in the pass that wrote it — it
 runs at deploy, after a backup.
 
@@ -7288,8 +7341,18 @@ lines inside three already-unfrozen functions, every import in the body:
   `round_off` / `grand_total`. With GST on the document there is **no** tax
   band; with none, the `/settings` tax line. Subject and row text are
   `summary_subject` / `summary_system`, else `pricesummary.quote_defaults()`.
-  The detail pages keep their own `_build_tnc()` terms; the snapshot terms
-  print on the cover. **Landscape** wraps the sheet in `sheet-landscape` and
+  ⚠ **ONE terms list per print (26 Nov 2026, §0 ninety-first block).** With
+  the cover ON, `_build_tnc()`'s block does **not** print; the stored terms
+  are the only list. The quotation's own typed data that block carried
+  prints under the numbered terms as "Label: value", filled ones only:
+  *Terms of Delivery* (`delivery_terms`), *Delivery* (`delivery_date`),
+  *Dispatch Through* (`dispatch_through`), *Validity* (`validity_days` +
+  " days"). `payment_terms` does not print with the cover (it stays in the
+  header's *Mode/Term of Payment* row). The tax clause is not repeated: the
+  cover prints the tax lines themselves. With the cover OFF the page prints
+  exactly what `5c0749c` printed; the document part is pinned
+  (`tests/test_terms_library.py`, `SUMMARY_OFF_DOC`). The form carries the
+  hint "With the price summary page on, these are the only terms printed." **Landscape** wraps the sheet in `sheet-landscape` and
   loads `docsheet.LANDSCAPE_STYLES` / `LANDSCAPE_SCRIPT`; absent is portrait.
 - `create_quotation()` splices the form section in **the library mode only**
   (after the format call, the number field's precedent), so the catalogue
@@ -14398,13 +14461,16 @@ anywhere.
 
 ⚠ **Price Summary Page, 25 November 2026** (CLIENT_CHANGES.md §0 ninetieth
 block): the cover's **title** and **tax line** (blank prints the built-in
-wording) and the ONE **default terms list**, an ordered editor (add, remove,
-move up, move down), stored in `STORE["settings"]["price_summary"]` and read
-through `pricesummary.py`. Seeded once with the client's eleven terms as a
-**genuine default** (`ensure_demo_settings()`, whatever the demo flag says),
-never over a record that exists. Saved only from a POST that carried the
-section. It is a default: a BOQ or quotation takes a copy at create, and this
-list changing moves no document already raised.
+wording) and, from 26 November 2026, the **terms library**: every term's
+text, category and *On by default* tick, in order (add, edit, delete,
+reorder, recategorise), stored in `STORE["settings"]["price_summary"]` and
+read through `pricesummary.py` (§2o). Seeded and migrated as a **genuine
+default** (`ensure_demo_settings()`, whatever the demo flag says), never over
+an edit. Saved only from a POST that carried the library editor
+(`summary_library_present`). A BOQ or quotation takes a copy of the ticked
+terms at create; the library changing moves no document already raised. The
+amber payment note covers the ticked set. ⚠ This page keeps **no edit log**,
+so library edits are not logged.
 
 ⚠ **Starting Numbers is new on 25 September 2026** (§7 gap 36) and it is the
 one block on this page whose **rule lives somewhere else**. The nine boxes, the

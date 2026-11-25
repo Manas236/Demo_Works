@@ -1465,7 +1465,8 @@ def create_quotation(imported: dict = None):
             # SNAPSHOT (25 Nov 2026, §0 ninetieth block). A form without the
             # editor (the catalogue mode, an import) copies /settings.
             import pricesummary as _PSC
-            _PSC.apply_form(STORE["quotations"][qid], form, creating=True)
+            _PSC.apply_form(STORE["quotations"][qid], form, creating=True,
+                            may_save_library=auth.can_reach("settings.edit_settings"))
             for _k in (_PSC.FIELD_SUBJECT, _PSC.FIELD_SYSTEM):
                 STORE["quotations"][qid][_k] = _PSC.form_text(form, _k)
             P.log_event(STORE["quotations"][qid], "Quotation created.")
@@ -2625,17 +2626,19 @@ document.getElementById('qf').addEventListener('submit', function(e) {{
         # opens with a COPY of the /settings default terms.
         import pricesummary as _PSF
         _posted = request.method == "POST"
+        _ps_terms, _ps_cats = (_PSF.form_section_args(form, _PSF.default_terms())
+                               if _posted else (_PSF.default_terms(), []))
         html = html.replace(
             "\n\n<!-- ════════ SECTION 4: TAX / DUTY ════════ -->",
             "\n" + _PSF.form_section_html(
                 _PSF.form_on(form, True) if _posted else True,
-                _PSF.form_terms(form, _PSF.default_terms()) if _posted
-                else _PSF.default_terms(),
-                _PSF.text_fields_html(
+                _ps_terms, _PSF.text_fields_html(
                     _PSF.form_text(form, _PSF.FIELD_SUBJECT) if _posted else "",
                     _PSF.form_text(form, _PSF.FIELD_SYSTEM) if _posted else "",
                     "Blank: the Ship To or Customer name + Quotation",
-                    "Blank: the Lead Sub-type, else Fire Protection System"))
+                    "Blank: the Lead Sub-type, else Fire Protection System"),
+                may_save_library=auth.can_reach("settings.edit_settings"),
+                hint=_PSF.QUOTE_TERMS_HINT, save_cats=_ps_cats)
             + "\n\n<!-- ════════ SECTION 4: TAX / DUTY ════════ -->", 1)
         html = html.replace("</form>", "</form>" + (
             _DNF.NUMBER_STYLES
@@ -3127,10 +3130,28 @@ def view_quotation(id: str):
             rows=[("A", (q.get(_PSV.FIELD_SYSTEM) or "").strip() or _sys,
                    [_inr(subtotal)])],
             totals=_tot, tax_line="" if has_tax else _cfg["tax_line"],
-            terms=_PSV.terms_of(q))
+            terms=_PSV.terms_of(q),
+            # ONE terms list (26 Nov 2026, §0 ninety-first block): with the
+            # cover on, `_build_tnc()` does not print. The quotation's own
+            # TYPED data it carried prints here instead, filled ones only.
+            # Payment terms do not (the stored terms carry the payment).
+            notes=[("Terms of Delivery", (q.get("delivery_terms") or "").strip()),
+                   ("Delivery", (q.get("delivery_date") or "").strip()),
+                   ("Dispatch Through", (q.get("dispatch_through") or "").strip()),
+                   ("Validity", (f"{str(q.get('validity_days')).strip()} days"
+                                 if str(q.get("validity_days") or "").strip() else ""))])
     orient_switch = _PSV.orientation_toolbar(
         url_for("quotation.set_print_orientation", id=id), orient,
         _AUTH.can_reach("quotation.set_print_orientation"))
+    if cover:
+        orient_switch = _PSV.payment_note_html(_PSV.terms_of(q)) + orient_switch
+    # Summary OFF: the old terms block, byte for byte as it always printed.
+    tnc_block = "" if cover else f"""  <div class="tnc-section">
+    <div class="tnc-title">{B.COMPANY_SHORT} Terms and Conditions</div>
+    <ol class="tnc-ol">{tnc_html}</ol>
+  </div>
+
+"""
 
     words     = _amount_in_words(q["grand_total"])
     comp_br   = P.esc(q.get("company_branch")) or P.esc(B.COMPANY_NAME)
@@ -3221,12 +3242,7 @@ def view_quotation(id: str):
     <div class="amount-words">Amount Chargeable (in words) : {words}</div>
   </div>
 
-  <div class="tnc-section">
-    <div class="tnc-title">{B.COMPANY_SHORT} Terms and Conditions</div>
-    <ol class="tnc-ol">{tnc_html}</ol>
-  </div>
-
-{_DS.sig_block(comp_br, signatory, computer_generated=True)}
+{tnc_block}{_DS.sig_block(comp_br, signatory, computer_generated=True)}
 
   </td></tr></tbody>
   </table>
@@ -3474,7 +3490,8 @@ def edit_quotation(id: str, imported: dict = None):
             q.update(rates)
             # The price summary page (25 Nov 2026, §0 ninetieth block): the
             # tick, its two text fields and the quotation's OWN terms.
-            _PSE.apply_form(q, f, creating=False)
+            _PSE.apply_form(q, f, creating=False,
+                            may_save_library=_AUTH.can_reach("settings.edit_settings"))
             for _k in (_PSE.FIELD_SUBJECT, _PSE.FIELD_SYSTEM):
                 q[_k] = _PSE.form_text(f, _k, q.get(_k) or "")
             q.update({"tax_type": tax_type, "tax_info": tax_info, "subtotal": subtotal,
@@ -3484,7 +3501,9 @@ def edit_quotation(id: str, imported: dict = None):
                                        if not r.get("is_header") and not r.get("depth")),
                       "to": "\n".join(to_parts)})
             changes = (_EL.diff(before, q, (("ref", "Quotation No."),) + tuple(fields))
-                       + _EL.line_diff(before_lines, lines))
+                       + _EL.line_diff(before_lines, lines)
+                       # the summary tick, texts and terms (26 Nov 2026)
+                       + _PSE.log_changes(before, q))
             _EL.record(q, changes, str((_AUTH.current_user() or {}).get("id") or ""))
             if changes:
                 P.log_event(q, f"Quotation edited — {len(changes)} change"
@@ -3538,6 +3557,10 @@ def edit_quotation(id: str, imported: dict = None):
                        f'{lbl}</option>' for k, lbl in heads)
     action = url_for("quotation.edit_quotation", id=id)
     view_url = url_for("quotation.view_quotation", id=id)
+    _ps_terms, _ps_cats = (_PSE.form_section_args(f, _PSE.terms_of(q))
+                           if request.method == "POST" else
+                           (_PSE.terms_of(q) if _PSE.has_terms(q)
+                            else _PSE.default_terms(), []))
     err_html = f'<div class="alert alert-error">&#10007; {error}</div>' if error else ""
     if imported:
         err_html = (imported.get("banner_html") or "") + err_html
@@ -3628,14 +3651,14 @@ def edit_quotation(id: str, imported: dict = None):
     </div>
     {_PSE.form_section_html(
         _PSE.form_on(f, True) if request.method == "POST" else _PSE.is_on(q),
-        _PSE.form_terms(f, _PSE.terms_of(q)) if request.method == "POST"
-        else (_PSE.terms_of(q) if _PSE.has_terms(q) else _PSE.default_terms()),
-        _PSE.text_fields_html(
+        _ps_terms, _PSE.text_fields_html(
             _PSE.form_text(f, _PSE.FIELD_SUBJECT, q.get(_PSE.FIELD_SUBJECT) or "")
             if request.method == "POST" else (q.get(_PSE.FIELD_SUBJECT) or ""),
             _PSE.form_text(f, _PSE.FIELD_SYSTEM, q.get(_PSE.FIELD_SYSTEM) or "")
             if request.method == "POST" else (q.get(_PSE.FIELD_SYSTEM) or ""),
-            *_PSE.quote_defaults(q)))}
+            *_PSE.quote_defaults(q)),
+        may_save_library=_AUTH.can_reach("settings.edit_settings"),
+        hint=_PSE.QUOTE_TERMS_HINT, save_cats=_ps_cats)}
     <div class="form-actions">
       <button type="submit" class="btn">Save changes</button>
       <a href="{view_url}" class="btn btn-ghost">Cancel</a>
@@ -3675,5 +3698,9 @@ def set_print_orientation(id: str):
                                 msg="Quotation not found.", type="error"))
     v = _PSO.orientation_value(request.form.get(_PSO.FIELD_ORIENT))
     if v:
+        import auth as _AUO
+        import editlog as _ELO
+        _ELO.record(q, _PSO.orientation_change(q, v, _PSO.PORTRAIT),
+                    str((_AUO.current_user() or {}).get("id") or ""))
         q[_PSO.FIELD_ORIENT] = v
     return redirect(url_for("quotation.view_quotation", id=id))

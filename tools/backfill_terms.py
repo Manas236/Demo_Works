@@ -5,10 +5,12 @@ tools/backfill_terms.py: give every existing BOQ and quotation its own terms
 CLIENT_CHANGES.md §0 ninetieth block (25 November 2026), R3. A BOQ or a
 quotation prints the terms stored ON IT (`summary_terms`), never the live
 /settings list. Documents raised before that block have none stored, so their
-price summary page prints no terms until this runs. It COPIES the current
-/settings default (`pricesummary.settings_of()["terms"]`, the client's eleven
-when nobody has edited the list) into every BOQ and quotation that LACKS the
-key, and touches nothing else.
+price summary page prints no terms until this runs. It COPIES the terms
+library's ON-by-default terms, in library order (`pricesummary.default_terms()`;
+the client's eleven unless the library was edited), into every BOQ and
+quotation that LACKS the key, and touches nothing else. From 26 November 2026
+(§0 ninety-first block) the /settings record is a LIBRARY; the copy is its
+ticked terms, exactly what a new document starts with.
 
 * **Dry run is the default.** It prints the counts and writes nothing.
 * `--write` applies it and saves through `db.sync()`.
@@ -38,7 +40,7 @@ COLLECTIONS = (("boqs", "BOQ"), ("quotations", "quotation"))
 def backfill(store: dict, write: bool = False) -> dict:
     """`{collection: {"total", "lacking", "written"}}`, plus `"terms"`, the
     number of terms each lacking document gets. Writes only when `write`."""
-    terms = PS.settings_of()["terms"]
+    terms = PS.default_terms()
     out = {"terms": len(terms)}
     for coll, _noun in COLLECTIONS:
         docs = store.get(coll) or {}
@@ -71,8 +73,8 @@ def main() -> int:
     print(f"loaded {loaded} records from {db.CONFIG['name']}")
 
     res = backfill(STORE, write=write)
-    print(f"{'WRITING' if write else 'DRY RUN'}: the /settings default holds "
-          f"{res['terms']} term(s)")
+    print(f"{'WRITING' if write else 'DRY RUN'}: the library has "
+          f"{res['terms']} term(s) on by default")
     for coll, noun in COLLECTIONS:
         r = res[coll]
         print(f"  {noun:9s}  {r['total']:5d} total, {r['lacking']:5d} without terms, "

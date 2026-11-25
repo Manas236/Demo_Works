@@ -226,20 +226,19 @@ def test_the_cover_does_not_reach_the_internal_view(client, demo):
 # ── R3: the terms are a snapshot ───────────────────────────────────────────
 
 def test_seed_is_the_clients_eleven_verbatim_and_never_overwrites(client):
+    """Superseded on 26 Nov 2026 by the LIBRARY (§0 ninety-first block): the
+    eleven are still the seed, now the first eleven library terms, ON."""
     STORE["settings"].pop(PS.RECORD, None)
     PS.ensure_seeded()
     rec = STORE["settings"][PS.RECORD]
-    assert len(rec["terms"]) == 11
-    assert rec["terms"][0].startswith("Two layers of primer")
-    assert rec["terms"][9] == "10% retention payment completion of work."
+    on = [e["text"] for e in rec["library"] if e["on"]]
+    assert on == list(PS.DEFAULT_TERMS)
+    assert on[9] == "10% retention payment completion of work."
     assert rec["title"] == "PRICE SUMMARY FOR FIRE PROTECTION SYSTEM"
     assert rec["tax_line"] == "TAXES WILL BE EXTRA"
-    rec["terms"] = ["Only this one."]
+    rec["library"] = [{"id": "x", "text": "Only this one.", "category": "Legal", "on": True}]
     PS.ensure_seeded()
-    assert STORE["settings"][PS.RECORD]["terms"] == ["Only this one."]
-    rec["terms"] = []
-    PS.ensure_seeded()
-    assert STORE["settings"][PS.RECORD]["terms"] == [], "an emptied list stays empty"
+    assert [e["text"] for e in STORE["settings"][PS.RECORD]["library"]] == ["Only this one."]
 
 
 def test_create_copies_the_default_and_print_never_reads_the_live_list(client):
@@ -282,20 +281,27 @@ def test_settings_page_saves_reorders_and_removes(client):
     from werkzeug.datastructures import MultiDict
     import settings as S
     page = client.get("/settings/").get_data(as_text=True)
-    assert "Default Terms &amp; Conditions" in page
+    assert "Terms library" in page
     # Post the page's other sections as they stand, with the summary edited.
     data = MultiDict([(k, v) for k, v in S.load_saved().items()])
     data.add("charge_heads", "\n".join(S.charge_heads()))
     data.add("measurement_columns", S.measurement_columns_text())
-    data.add(PS.MARK_TERMS, "1")
+    data.add(PS.MARK_LIB, "1")
     data.add("ps_title", "SUMMARY")
     data.add("ps_tax_line", "")
-    for t in ("Term B", "Term A"):
-        data.add(PS.FIELD_TERM, t)
+    for i, t, c, on in (("", "Term B", "Legal", "1"), ("", "Term A", "Site", "1"),
+                        ("", "Term C", "Nonsense", "0"), ("", "   ", "Site", "1")):
+        data.add(PS.LIB_ID, i)
+        data.add(PS.LIB_TEXT, t)
+        data.add(PS.LIB_CAT, c)
+        data.add(PS.LIB_ON, on)
     r = client.post("/settings/", data=data)
     assert r.status_code == 302, r.get_data(as_text=True)[:3000]
     cfg = PS.settings_of()
     assert cfg["terms"] == ["Term B", "Term A"]
+    assert [(e["text"], e["category"], e["on"]) for e in cfg["library"]] == [
+        ("Term B", "Legal", True), ("Term A", "Site", True),
+        ("Term C", "Commercial", False)], "an unknown category falls back; a blank row goes"
     assert cfg["title"] == "SUMMARY"
     assert cfg["tax_line"] == "TAXES WILL BE EXTRA", "blank reads as the default"
 
